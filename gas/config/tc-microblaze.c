@@ -37,6 +37,8 @@
 
 #define OPTION_EB (OPTION_MD_BASE + 0)
 #define OPTION_EL (OPTION_MD_BASE + 1)
+#define OPTION_LITTLE (OPTION_MD_BASE + 2)
+#define OPTION_BIG (OPTION_MD_BASE + 3)
 
 void microblaze_generate_symbol (char *sym);
 static bool check_spl_reg (unsigned *);
@@ -2565,9 +2567,11 @@ md_parse_option (int c, const char * arg ATTRIBUTE_UNUSED)
   switch (c)
     {
     case OPTION_EB:
+    case OPTION_BIG:
       target_big_endian = 1;
       break;
     case OPTION_EL:
+    case OPTION_LITTLE:
       target_big_endian = 0;
       break;
     default:
