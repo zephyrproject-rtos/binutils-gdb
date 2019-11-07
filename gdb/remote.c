@@ -3443,21 +3443,21 @@ static int remote_newthread_step (threadref *ref, void *context);
 char *
 remote_target::write_ptid (char *buf, const char *endbuf, ptid_t ptid)
 {
-  int pid, tid;
+  long pid, tid;
 
   if (m_features.remote_multi_process_p ())
     {
       pid = ptid.pid ();
       if (pid < 0)
-	buf += xsnprintf (buf, endbuf - buf, "p-%x.", -pid);
+	buf += xsnprintf (buf, endbuf - buf, "p-%lx.", -pid);
       else
-	buf += xsnprintf (buf, endbuf - buf, "p%x.", pid);
+	buf += xsnprintf (buf, endbuf - buf, "p%lx.", pid);
     }
   tid = ptid.lwp ();
   if (tid < 0)
-    buf += xsnprintf (buf, endbuf - buf, "-%x", -tid);
+    buf += xsnprintf (buf, endbuf - buf, "-%lx", -tid);
   else
-    buf += xsnprintf (buf, endbuf - buf, "%x", tid);
+    buf += xsnprintf (buf, endbuf - buf, "%lx", tid);
 
   return buf;
 }
