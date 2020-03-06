@@ -8869,6 +8869,7 @@ remote_target::fetch_register_using_p (struct regcache *regcache,
   char *buf, *p;
   gdb_byte *regp = (gdb_byte *) alloca (register_size (gdbarch, reg->regnum));
   int i;
+  enum bfd_architecture bfd_arch = gdbarch_bfd_arch_info (gdbarch)->arch;
 
   if (m_features.packet_support (PACKET_p) == PACKET_DISABLE)
     return 0;
@@ -8893,6 +8894,15 @@ remote_target::fetch_register_using_p (struct regcache *regcache,
     case PACKET_UNKNOWN:
       return 0;
     case PACKET_ERROR:
+      /* On Xtensa, some privileged registers cannot be read using 'p'
+         packet. So keep these marked as unavailable so GDB can still
+         fetch other registers instead of stopping at error.  */
+      if (bfd_arch == bfd_arch_xtensa)
+        {
+          regcache->raw_supply (reg->regnum, NULL);
+          return 1;
+        }
+
       error (_("Could not fetch register \"%s\"; remote failure reply '%s'"),
 	     gdbarch_register_name (regcache->arch (), reg->regnum),
 	     result.err_msg ());
