@@ -444,7 +444,7 @@ _rl_init_terminal_io (const char *terminal_name)
   tty = rl_instream ? fileno (rl_instream) : 0;
 
   if (term == 0)
-    term = "dumb";
+    term = "unknown";
 
 #ifdef __MSDOS__
   _rl_term_im = _rl_term_ei = _rl_term_ic = _rl_term_IC = (char *)NULL;
