@@ -463,7 +463,7 @@ _rl_init_terminal_io (const char *terminal_name)
   tty = rl_instream ? fileno (rl_instream) : 0;
 
   if (term == 0)
-    term = "dumb";
+    term = "unknown";
 
   dumbterm = STREQ (term, "dumb");
 
