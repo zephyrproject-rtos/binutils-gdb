@@ -20,6 +20,8 @@
 #ifndef ARCH_XTENSA_H
 #define ARCH_XTENSA_H
 
+#include <stdint.h>
+
 /* Xtensa ELF core file register set representation ('.reg' section).
    Copied from target-side ELF header <xtensa/elf.h>.  */
 
