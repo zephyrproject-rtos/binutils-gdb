@@ -939,6 +939,7 @@ enable_libctf
 with_libxxhash_prefix
 with_libxxhash_type
 enable_xtensa_use_target_regnum
+enable_xtensa_remote_g_packet
 enable_unit_tests
 '
       ac_precious_vars='build_alias
@@ -1615,6 +1616,8 @@ Optional Features:
   --enable-libctf         Handle .ctf type-info sections [default=yes]
   --enable-xtensa-use-target-regnum
                           Use remote target register numbers (Xtensa target)
+  --disable-xtensa-remote-g-packet
+                          Disable g packet for remote Xtensa target
   --enable-unit-tests     Enable the inclusion of unit tests when compiling
                           GDB
 
@@ -19930,6 +19933,23 @@ fi
 
 if test x"$enable_xtensa_use_target_regnum" = xyes; then
   CPPFLAGS="$CPPFLAGS -DXTENSA_USE_TGT_REGNUM"
+fi
+
+# Use g packet for remote Xtensa target
+# Check whether --enable-xtensa-remote-g-packet was given.
+if test "${enable_xtensa_remote_g_packet+set}" = set; then :
+  enableval=$enable_xtensa_remote_g_packet; case $enableval in
+    yes | no)
+      enable_xtensa_use_g_packet=$enableval ;;
+    *)
+      as_fn_error $? "bad value $enableval for --enable-xtensa-remote-g-packet" "$LINENO" 5 ;;
+  esac
+else
+  enable_xtensa_use_g_packet=yes
+fi
+
+if test x"$enable_xtensa_use_g_packet" = xno; then
+  CPPFLAGS="$CPPFLAGS -DXTENSA_DISABLE_REMOTE_G_PACKET"
 fi
 
 NM_H=

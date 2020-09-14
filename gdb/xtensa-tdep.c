@@ -3178,6 +3178,16 @@ xtensa_remote_register_number (struct gdbarch *gdbarch, int regnum)
 }
 #endif
 
+static int
+xtensa_remote_supports_g_packet (struct gdbarch *gdbarch)
+{
+#ifdef XTENSA_DISABLE_REMOTE_G_PACKET
+  return 0;
+#else
+  return 1;
+#endif
+}
+
 /* Module "constructor" function.  */
 
 extern xtensa_gdbarch_tdep xtensa_tdep;
@@ -3276,6 +3286,8 @@ xtensa_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
 
   set_solib_svr4_fetch_link_map_offsets
     (gdbarch, svr4_ilp32_fetch_link_map_offsets);
+
+  set_gdbarch_remote_supports_g_packet (gdbarch, xtensa_remote_supports_g_packet);
 
   /* Hook in the ABI-specific overrides, if they have been registered.  */
   gdbarch_init_osabi (info, gdbarch);

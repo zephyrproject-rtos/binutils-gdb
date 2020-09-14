@@ -2232,6 +2232,20 @@ if test x"$enable_xtensa_use_target_regnum" = xyes; then
   CPPFLAGS="$CPPFLAGS -DXTENSA_USE_TGT_REGNUM"
 fi
 
+# Use g packet for remote Xtensa target
+AC_ARG_ENABLE(xtensa-remote-g-packet,
+AS_HELP_STRING([--disable-xtensa-remote-g-packet], [Disable g packet for remote Xtensa target]),
+  [case $enableval in
+    yes | no)
+      enable_xtensa_use_g_packet=$enableval ;;
+    *)
+      AC_MSG_ERROR([bad value $enableval for --enable-xtensa-remote-g-packet]) ;;
+  esac],
+  [enable_xtensa_use_g_packet=yes])
+if test x"$enable_xtensa_use_g_packet" = xno; then
+  CPPFLAGS="$CPPFLAGS -DXTENSA_DISABLE_REMOTE_G_PACKET"
+fi
+
 NM_H=
 rm -f nm.h
 if test "${nativefile}" != ""; then
