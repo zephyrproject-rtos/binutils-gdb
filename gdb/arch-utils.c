@@ -1004,6 +1004,12 @@ default_get_pc_address_flags (frame_info *frame, CORE_ADDR pc)
   return "";
 }
 
+int
+default_remote_supports_g_packet (struct gdbarch *gdbarch)
+{
+  return 1;
+}
+
 void
 _initialize_gdbarch_utils (void)
 {

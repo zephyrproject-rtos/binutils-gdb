@@ -276,4 +276,6 @@ extern ULONGEST default_type_align (struct gdbarch *gdbarch,
 extern std::string default_get_pc_address_flags (frame_info *frame,
 						 CORE_ADDR pc);
 
+int default_remote_supports_g_packet (struct gdbarch *gdbarch);
+
 #endif /* ARCH_UTILS_H */

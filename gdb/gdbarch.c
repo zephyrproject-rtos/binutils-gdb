@@ -358,6 +358,7 @@ struct gdbarch
   const disasm_options_and_args_t * valid_disassembler_options;
   gdbarch_type_align_ftype *type_align;
   gdbarch_get_pc_address_flags_ftype *get_pc_address_flags;
+  gdbarch_remote_supports_g_packet_ftype *remote_supports_g_packet;
 };
 
 /* Create a new ``struct gdbarch'' based on information provided by
@@ -473,6 +474,7 @@ gdbarch_alloc (const struct gdbarch_info *info,
   gdbarch->addressable_memory_unit_size = default_addressable_memory_unit_size;
   gdbarch->type_align = default_type_align;
   gdbarch->get_pc_address_flags = default_get_pc_address_flags;
+  gdbarch->remote_supports_g_packet = default_remote_supports_g_packet;
   /* gdbarch_alloc() */
 
   return gdbarch;
@@ -1500,6 +1502,9 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
   fprintf_unfiltered (file,
                       "gdbarch_dump: xml_syscall_file = %s\n",
                       pstring (gdbarch->xml_syscall_file));
+  fprintf_unfiltered (file,
+                      "gdbarch_dump: remote_supports_g_packet = <%s>\n",
+                      host_address_to_string (gdbarch->remote_supports_g_packet));
   if (gdbarch->dump_tdep != NULL)
     gdbarch->dump_tdep (gdbarch, file);
 }
@@ -5156,6 +5161,22 @@ set_gdbarch_get_pc_address_flags (struct gdbarch *gdbarch,
   gdbarch->get_pc_address_flags = get_pc_address_flags;
 }
 
+int
+gdbarch_remote_supports_g_packet (struct gdbarch *gdbarch)
+{
+  gdb_assert (gdbarch != NULL);
+  gdb_assert (gdbarch->remote_supports_g_packet != NULL);
+  if (gdbarch_debug >= 2)
+    fprintf_unfiltered (gdb_stdlog, "gdbarch_remote_supports_g_packet called\n");
+  return gdbarch->remote_supports_g_packet (gdbarch);
+}
+
+void
+set_gdbarch_remote_supports_g_packet (struct gdbarch *gdbarch,
+                                      gdbarch_remote_supports_g_packet_ftype *remote_supports_g_packet)
+{
+  gdbarch->remote_supports_g_packet = remote_supports_g_packet;
+}
 
 /* Keep a registry of per-architecture data-pointers required by GDB
    modules.  */

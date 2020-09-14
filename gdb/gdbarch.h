@@ -1642,6 +1642,11 @@ extern void set_gdbarch_get_pc_address_flags (struct gdbarch *gdbarch, gdbarch_g
 
 extern struct gdbarch_tdep *gdbarch_tdep (struct gdbarch *gdbarch);
 
+/* If arch supports 'g' packets */
+
+typedef int (gdbarch_remote_supports_g_packet_ftype) (struct gdbarch *gdbarch);
+extern int gdbarch_remote_supports_g_packet (struct gdbarch *gdbarch);
+extern void set_gdbarch_remote_supports_g_packet (struct gdbarch *gdbarch, gdbarch_remote_supports_g_packet_ftype *remote_supports_g_packet);
 
 /* Mechanism for co-ordinating the selection of a specific
    architecture.
