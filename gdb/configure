@@ -938,6 +938,7 @@ with_xxhash
 enable_libctf
 with_libxxhash_prefix
 with_libxxhash_type
+enable_xtensa_use_target_regnum
 enable_unit_tests
 '
       ac_precious_vars='build_alias
@@ -1612,6 +1613,8 @@ Optional Features:
   --enable-libbacktrace   use libbacktrace to write a backtrace after a fatal
                           signal.
   --enable-libctf         Handle .ctf type-info sections [default=yes]
+  --enable-xtensa-use-target-regnum
+                          Use remote target register numbers (Xtensa target)
   --enable-unit-tests     Enable the inclusion of unit tests when compiling
                           GDB
 
@@ -19911,6 +19914,23 @@ fi
 $as_echo_n "checking whether to use xxhash... " >&6; }
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $with_xxhash" >&5
 $as_echo "$with_xxhash" >&6; }
+
+# Xtensa to use target register number
+# Check whether --enable-xtensa-use-target-regnum was given.
+if test "${enable_xtensa_use_target_regnum+set}" = set; then :
+  enableval=$enable_xtensa_use_target_regnum; case $enableval in
+    yes | no)
+      enable_xtensa_use_target_regnum=$enableval ;;
+    *)
+      as_fn_error $? "bad value $enableval for --enable-xtensa-use-target-regnum" "$LINENO" 5 ;;
+  esac
+else
+  enable_xtensa_use_target_regnum=no
+fi
+
+if test x"$enable_xtensa_use_target_regnum" = xyes; then
+  CPPFLAGS="$CPPFLAGS -DXTENSA_USE_TGT_REGNUM"
+fi
 
 NM_H=
 rm -f nm.h

@@ -3163,6 +3163,21 @@ xtensa_derive_tdep (xtensa_gdbarch_tdep *tdep)
   tdep->max_register_virtual_size = max_size;
 }
 
+#ifdef XTENSA_USE_TGT_REGNUM
+static int
+xtensa_remote_register_number (struct gdbarch *gdbarch, int regnum)
+{
+  xtensa_gdbarch_tdep *tdep = (xtensa_gdbarch_tdep *) gdbarch_tdep (gdbarch);
+
+  /* Return the name stored in the register map.  */
+  if (regnum >= 0 && regnum < gdbarch_num_cooked_regs (gdbarch))
+    return tdep->regmap[regnum].target_number;
+
+  internal_error (__FILE__, __LINE__, _("invalid register %d"), regnum);
+  return regnum;
+}
+#endif
+
 /* Module "constructor" function.  */
 
 extern xtensa_gdbarch_tdep xtensa_tdep;
@@ -3209,6 +3224,10 @@ xtensa_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
   /* We provide our own function to get register information.  */
   set_gdbarch_register_name (gdbarch, xtensa_register_name);
   set_gdbarch_register_type (gdbarch, xtensa_register_type);
+
+#ifdef XTENSA_USE_TGT_REGNUM
+  set_gdbarch_remote_register_number (gdbarch, xtensa_remote_register_number);
+#endif
 
   /* To call functions from GDB using dummy frame.  */
   set_gdbarch_push_dummy_call (gdbarch, xtensa_push_dummy_call);
