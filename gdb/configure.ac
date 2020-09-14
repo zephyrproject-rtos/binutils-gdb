@@ -2218,6 +2218,20 @@ fi
 AC_MSG_CHECKING([whether to use xxhash])
 AC_MSG_RESULT([$with_xxhash])
 
+# Xtensa to use target register number
+AC_ARG_ENABLE(xtensa-use-target-regnum,
+AS_HELP_STRING([--enable-xtensa-use-target-regnum], [Use remote target register numbers (Xtensa target)]),
+  [case $enableval in
+    yes | no)
+      enable_xtensa_use_target_regnum=$enableval ;;
+    *)
+      AC_MSG_ERROR([bad value $enableval for --enable-xtensa-use-target-regnum]) ;;
+  esac],
+  [enable_xtensa_use_target_regnum=no])
+if test x"$enable_xtensa_use_target_regnum" = xyes; then
+  CPPFLAGS="$CPPFLAGS -DXTENSA_USE_TGT_REGNUM"
+fi
+
 NM_H=
 rm -f nm.h
 if test "${nativefile}" != ""; then
