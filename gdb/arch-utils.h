@@ -300,4 +300,7 @@ extern void default_read_core_file_mappings
    struct bfd *cbfd,
    read_core_file_mappings_pre_loop_ftype pre_loop_cb,
    read_core_file_mappings_loop_ftype loop_cb);
+
+/* Default implementation of gdbarch remote_supports_g_packet method.  */
+extern int default_remote_supports_g_packet (struct gdbarch *gdbarch);
 #endif /* ARCH_UTILS_H */

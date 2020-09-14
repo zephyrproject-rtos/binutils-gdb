@@ -248,6 +248,7 @@ struct gdbarch
   gdbarch_type_align_ftype *type_align;
   gdbarch_get_pc_address_flags_ftype *get_pc_address_flags;
   gdbarch_read_core_file_mappings_ftype *read_core_file_mappings;
+  gdbarch_remote_supports_g_packet_ftype *remote_supports_g_packet;
 };
 
 /* Create a new ``struct gdbarch'' based on information provided by
@@ -371,6 +372,7 @@ gdbarch_alloc (const struct gdbarch_info *info,
   gdbarch->type_align = default_type_align;
   gdbarch->get_pc_address_flags = default_get_pc_address_flags;
   gdbarch->read_core_file_mappings = default_read_core_file_mappings;
+  gdbarch->remote_supports_g_packet = default_remote_supports_g_packet;
   /* gdbarch_alloc() */
 
   return gdbarch;
@@ -1420,6 +1422,9 @@ gdbarch_dump (struct gdbarch *gdbarch, struct ui_file *file)
   fprintf_filtered (file,
                       "gdbarch_dump: read_core_file_mappings = <%s>\n",
                       host_address_to_string (gdbarch->read_core_file_mappings));
+  fprintf_filtered (file,
+                      "gdbarch_dump: remote_supports_g_packet = <%s>\n",
+                      host_address_to_string (gdbarch->remote_supports_g_packet));
   if (gdbarch->dump_tdep != NULL)
     gdbarch->dump_tdep (gdbarch, file);
 }
@@ -5272,4 +5277,21 @@ set_gdbarch_read_core_file_mappings (struct gdbarch *gdbarch,
                                      gdbarch_read_core_file_mappings_ftype read_core_file_mappings)
 {
   gdbarch->read_core_file_mappings = read_core_file_mappings;
+}
+
+int
+gdbarch_remote_supports_g_packet (struct gdbarch *gdbarch)
+{
+  gdb_assert (gdbarch != NULL);
+  gdb_assert (gdbarch->remote_supports_g_packet != NULL);
+  if (gdbarch_debug >= 2)
+    fprintf_unfiltered (gdb_stdlog, "gdbarch_remote_supports_g_packet called\n");
+  return gdbarch->remote_supports_g_packet (gdbarch);
+}
+
+void
+set_gdbarch_remote_supports_g_packet (struct gdbarch *gdbarch,
+                                      gdbarch_remote_supports_g_packet_ftype *remote_supports_g_packet)
+{
+  gdbarch->remote_supports_g_packet = remote_supports_g_packet;
 }
