@@ -976,6 +976,7 @@ with_babeltrace
 with_libbabeltrace_prefix
 with_libbabeltrace_type
 enable_libctf
+enable_xtensa_use_target_regnum
 enable_unit_tests
 '
       ac_precious_vars='build_alias
@@ -1662,6 +1663,8 @@ Optional Features:
   --enable-libbacktrace   use libbacktrace to write a backtrace after a fatal
                           signal.
   --enable-libctf         Handle .ctf type-info sections [default=yes]
+  --enable-xtensa-use-target-regnum
+                          Use remote target register numbers (Xtensa target)
   --enable-unit-tests     Enable the inclusion of unit tests when compiling
                           GDB
 
@@ -11500,7 +11503,7 @@ else
   lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<_LT_EOF
-#line 11503 "configure"
+#line 11506 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -11606,7 +11609,7 @@ else
   lt_dlunknown=0; lt_dlno_uscore=1; lt_dlneed_uscore=2
   lt_status=$lt_dlunknown
   cat > conftest.$ac_ext <<_LT_EOF
-#line 11609 "configure"
+#line 11612 "configure"
 #include "confdefs.h"
 
 #if HAVE_DLFCN_H
@@ -33635,6 +33638,23 @@ fi
 
 # If nativefile (NAT_FILE) is not set in configure.nat, we link to an
 # empty version.
+
+# Xtensa to use target register number
+# Check whether --enable-xtensa-use-target-regnum was given.
+if test "${enable_xtensa_use_target_regnum+set}" = set; then :
+  enableval=$enable_xtensa_use_target_regnum; case $enableval in
+    yes | no)
+      enable_xtensa_use_target_regnum=$enableval ;;
+    *)
+      as_fn_error $? "bad value $enableval for --enable-xtensa-use-target-regnum" "$LINENO" 5 ;;
+  esac
+else
+  enable_xtensa_use_target_regnum=no
+fi
+
+if test x"$enable_xtensa_use_target_regnum" = xyes; then
+  CPPFLAGS="$CPPFLAGS -DXTENSA_USE_TGT_REGNUM"
+fi
 
 NM_H=
 rm -f nm.h
