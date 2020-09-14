@@ -2835,3 +2835,14 @@ which all assume current_inferior() is the one to read from.
     predefault="default_core_parse_exec_context",
     invalid=False,
 )
+
+Method(
+    comment="""
+Return 1 if arch supports 'g' packets
+""",
+    type="int",
+    name="remote_supports_g_packet",
+    params=[],
+    predefault="default_remote_supports_g_packet",
+    invalid=False,
+)
