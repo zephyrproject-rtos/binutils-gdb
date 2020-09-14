@@ -1130,6 +1130,13 @@ default_update_call_site_pc (struct gdbarch *gdbarch, CORE_ADDR pc)
   return pc;
 }
 
+/* See arch-utils.h  */
+int
+default_remote_supports_g_packet (struct gdbarch *gdbarch)
+{
+  return 1;
+}
+
 /* Non-zero if we want to trace architecture code.  */
 
 #ifndef GDBARCH_DEBUG

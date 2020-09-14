@@ -414,4 +414,7 @@ extern enum return_value_convention default_gdbarch_return_value
       struct regcache *regcache, struct value **read_value,
       const gdb_byte *writebuf);
 
+/* Default implementation of gdbarch remote_supports_g_packet method.  */
+extern int default_remote_supports_g_packet (struct gdbarch *gdbarch);
+
 #endif /* GDB_ARCH_UTILS_H */

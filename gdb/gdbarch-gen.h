@@ -1793,3 +1793,9 @@ extern void set_gdbarch_use_target_description_from_corefile_notes (struct gdbar
 typedef core_file_exec_context (gdbarch_core_parse_exec_context_ftype) (struct gdbarch *gdbarch, bfd *cbfd);
 extern core_file_exec_context gdbarch_core_parse_exec_context (struct gdbarch *gdbarch, bfd *cbfd);
 extern void set_gdbarch_core_parse_exec_context (struct gdbarch *gdbarch, gdbarch_core_parse_exec_context_ftype *core_parse_exec_context);
+
+/* No comment */
+
+typedef int (gdbarch_remote_supports_g_packet_ftype) (struct gdbarch *gdbarch);
+extern int gdbarch_remote_supports_g_packet (struct gdbarch *gdbarch);
+extern void set_gdbarch_remote_supports_g_packet (struct gdbarch *gdbarch, gdbarch_remote_supports_g_packet_ftype *remote_supports_g_packet);
