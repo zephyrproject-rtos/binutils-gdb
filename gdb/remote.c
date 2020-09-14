@@ -1398,6 +1398,7 @@ map_regcache_remote_table (struct gdbarch *gdbarch, struct packet_reg *regs)
 {
   int regnum, num_remote_regs, offset;
   struct packet_reg **remote_regs;
+  int remote_supports_g_packet;
 
   for (regnum = 0; regnum < gdbarch_num_regs (gdbarch); regnum++)
     {
@@ -1427,9 +1428,11 @@ map_regcache_remote_table (struct gdbarch *gdbarch, struct packet_reg *regs)
 	     [] (const packet_reg *a, const packet_reg *b)
 	      { return a->pnum < b->pnum; });
 
+  remote_supports_g_packet = gdbarch_remote_supports_g_packet(gdbarch);
+
   for (regnum = 0, offset = 0; regnum < num_remote_regs; regnum++)
     {
-      remote_regs[regnum]->in_g_packet = 1;
+      remote_regs[regnum]->in_g_packet = remote_supports_g_packet;
       remote_regs[regnum]->offset = offset;
       offset += register_size (gdbarch, remote_regs[regnum]->regnum);
     }

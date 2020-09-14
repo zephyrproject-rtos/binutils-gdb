@@ -1092,6 +1092,13 @@ default_read_core_file_mappings
 {
 }
 
+/* See arch-utils.h.  */
+int
+default_remote_supports_g_packet (struct gdbarch *gdbarch)
+{
+  return 1;
+}
+
 /* Static function declarations */
 
 static void alloc_gdbarch_data (struct gdbarch *);
