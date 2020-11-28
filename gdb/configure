@@ -16392,6 +16392,7 @@ else
   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 #include <stdlib.h>
+  #include <string.h>
   #include "bfd.h"
   #include "elf-bfd.h"
 
@@ -16503,6 +16504,7 @@ else
   cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
 #include <stdlib.h>
+  #include <string.h>
   #include "bfd.h"
   #include "mach-o.h"
 
