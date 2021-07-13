@@ -111,6 +111,7 @@ AC_DEFUN([gl_FUNC_GETTIMEOFDAY_CLOBBER],
       case "$host_os" in
                 # Guess all is fine on glibc systems.
         *-gnu*) gl_cv_func_gettimeofday_clobber="guessing no" ;;
+        *-uclibc*) gl_cv_func_gettimeofday_clobber="guessing no" ;;
                 # If we don't know, assume the worst.
         *)      gl_cv_func_gettimeofday_clobber="guessing yes" ;;
       esac

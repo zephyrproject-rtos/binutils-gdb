@@ -2385,7 +2385,7 @@ call0_analyze_prologue (struct gdbarch *gdbarch,
   /* Find out, if we have an information about the prologue from DWARF.  */
   prologue_sal = find_pc_line (start, 0);
   if (prologue_sal.line != 0) /* Found debug info.  */
-    body_pc = prologue_sal.end;
+    body_pc = prologue_sal.end + 40;
 
   /* If we are going to analyze the prologue in general without knowing about
      the current PC, make the best assumption for the end of the prologue.  */
@@ -3136,6 +3136,9 @@ xtensa_derive_tdep (struct gdbarch_tdep *tdep)
     }
   if (tdep->num_regs == 0)
     tdep->num_regs = tdep->num_nopriv_regs;
+
+  if (tdep->ar_base == -1)
+    tdep->ar_base = tdep->a0_base;
 
   /* Number of pseudo registers.  */
   tdep->num_pseudo_regs = n - tdep->num_regs;
