@@ -101,7 +101,7 @@ Lock_impl_threads::Lock_impl_threads()
   int err = pthread_mutexattr_init(&attr);
   if (err != 0)
     gold_fatal(_("pthead_mutexattr_init failed: %s"), strerror(err));
-#ifdef PTHREAD_MUTEX_ADAPTIVE_NP
+#if defined(PTHREAD_MUTEX_ADAPTIVE_NP) && !defined(_WIN32)
   err = pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ADAPTIVE_NP);
   if (err != 0)
     gold_fatal(_("pthread_mutexattr_settype failed: %s"), strerror(err));
@@ -284,9 +284,18 @@ Condvar::~Condvar()
 class Once_initialize
 {
  public:
-  Once_initialize()
-    : once_(PTHREAD_ONCE_INIT)
-  { }
+   Once_initialize()
+#if !defined(__APPLE__)
+     : once_(PTHREAD_ONCE_INIT)
+   { }
+#else
+// In Drawin PTHREAD_ONCE_INIT is {0x30B1BCBA, {0}} and the GCC < 4.4 doesn't support
+// extended initializer list as above */
+   {
+     pthread_once_t once_2 = PTHREAD_ONCE_INIT;
+     once_ = once_2;
+   }
+#endif
 
   // Return a pointer to the pthread_once_t variable.
   pthread_once_t*

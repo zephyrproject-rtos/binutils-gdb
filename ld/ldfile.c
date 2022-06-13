@@ -117,6 +117,23 @@ ldfile_add_library_path (const char *name, bool cmdline)
     new_dirs->name = concat (ld_sysroot, name + strlen ("$SYSROOT"), (const char *) NULL);
   else
     new_dirs->name = xstrdup (name);
+
+#ifdef ENABLE_POISON_SYSTEM_DIRECTORIES
+  if (command_line.poison_system_directories
+  && ((!strncmp (name, "/lib", 4))
+      || (!strncmp (name, "/usr/lib", 8))
+      || (!strncmp (name, "/usr/local/lib", 14))
+      || (!strncmp (name, "/usr/X11R6/lib", 14))))
+   {
+     if (command_line.error_poison_system_directories)
+       einfo (_("%X%P: error: library search path \"%s\" is unsafe for "
+            "cross-compilation\n"), name);
+     else
+       einfo (_("%P: warning: library search path \"%s\" is unsafe for "
+            "cross-compilation\n"), name);
+   }
+#endif
+
 }
 
 /* Try to open a BFD for a lang_input_statement.  */
@@ -340,18 +357,25 @@ ldfile_open_file_search (const char *arch,
      directory first.  */
   if (!entry->flags.maybe_archive)
     {
-      if (entry->flags.sysrooted && IS_ABSOLUTE_PATH (entry->filename))
+      /* For absolute pathnames, try to always open the file in the
+	 sysroot first. If this fails, try to open the file at the
+	 given location.  */
+      entry->flags.sysrooted = is_sysrooted_pathname (entry->filename);
+      if (!entry->flags.sysrooted && IS_ABSOLUTE_PATH (entry->filename)
+	  && ld_sysroot)
 	{
 	  char *name = concat (ld_sysroot, entry->filename,
 			       (const char *) NULL);
 	  if (ldfile_try_open_bfd (name, entry))
 	    {
 	      entry->filename = name;
+	      entry->flags.sysrooted = true;
 	      return true;
 	    }
 	  free (name);
 	}
-      else if (ldfile_try_open_bfd (entry->filename, entry))
+
+      if (ldfile_try_open_bfd (entry->filename, entry))
 	return true;
 
       if (IS_ABSOLUTE_PATH (entry->filename))

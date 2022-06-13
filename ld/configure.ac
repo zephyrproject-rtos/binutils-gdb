@@ -102,6 +102,16 @@ AC_SUBST(use_sysroot)
 AC_SUBST(TARGET_SYSTEM_ROOT)
 AC_SUBST(TARGET_SYSTEM_ROOT_DEFINE)
 
+AC_ARG_ENABLE([poison-system-directories],
+         AS_HELP_STRING([--enable-poison-system-directories],
+                [warn for use of native system library directories]),,
+         [enable_poison_system_directories=no])
+if test "x${enable_poison_system_directories}" = "xyes"; then
+  AC_DEFINE([ENABLE_POISON_SYSTEM_DIRECTORIES],
+       [1],
+       [Define to warn for use of native system library directories])
+fi
+
 dnl Use --enable-gold to decide if this linker should be the default.
 dnl "install_as_default" is set to false if gold is the default linker.
 dnl "installed_linker" is the installed BFD linker name.
@@ -289,7 +299,10 @@ AM_PO_SUBDIRS
 AC_EXEEXT
 
 AC_PROG_YACC
+save_LIBS=$LIBS
 AM_PROG_LEX
+LIBS=$save_LIBS
+LEXLIB=
 
 AM_MAINTAINER_MODE
 AM_CONDITIONAL(GENINSRC_NEVER, false)
