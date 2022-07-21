@@ -370,16 +370,8 @@ microblaze_analyze_prologue (struct gdbarch *gdbarch, CORE_ADDR pc,
 static CORE_ADDR
 microblaze_unwind_pc (struct gdbarch *gdbarch, struct frame_info *next_frame)
 {
-  gdb_byte buf[4];
   CORE_ADDR pc;
-
-  frame_unwind_register (next_frame, MICROBLAZE_PC_REGNUM, buf);
-  pc = extract_typed_address (buf, builtin_type (gdbarch)->builtin_func_ptr);
-  /* For sentinel frame, return address is actual PC.  For other frames,
-     return address is pc+8.  This is a workaround because gcc does not
-     generate correct return address in CIE.  */
-  if (frame_relative_level (next_frame) >= 0)
-    pc += 8;
+  pc=frame_unwind_register_unsigned (next_frame, MICROBLAZE_PC_REGNUM);
   return pc;
 }
 
@@ -486,7 +478,8 @@ static const struct frame_unwind microblaze_frame_unwind =
   microblaze_frame_this_id,
   microblaze_frame_prev_register,
   NULL,
-  default_frame_sniffer
+  default_frame_sniffer,
+  NULL,
 };
 
 static CORE_ADDR
