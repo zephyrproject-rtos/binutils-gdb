@@ -61,6 +61,10 @@ START_RELOC_NUMBERS (elf_microblaze_reloc_type)
   RELOC_NUMBER (R_MICROBLAZE_TEXTPCREL_64, 30)  /* PC-relative TEXT offset.  */
   RELOC_NUMBER (R_MICROBLAZE_TEXTREL_64, 31)    /* TEXT Entry offset 64-bit.  */
   RELOC_NUMBER (R_MICROBLAZE_TEXTREL_32_LO, 32) /* TEXT Entry offset 32-bit.  */
+  RELOC_NUMBER (R_MICROBLAZE_32_NONE, 33)
+  RELOC_NUMBER (R_MICROBLAZE_IMML_64, 34)
+  RELOC_NUMBER (R_MICROBLAZE_GPC_64, 35)    /* GOT entry offset.  */
+   
 END_RELOC_NUMBERS (R_MICROBLAZE_max)
 
 /* Global base address names.  */

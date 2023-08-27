@@ -81,7 +81,9 @@ extern const struct relax_type md_relax_table[];
 
 #ifdef OBJ_ELF
 
-#define TARGET_FORMAT (target_big_endian ? "elf32-microblaze" : "elf32-microblazeel")
+#define TARGET_FORMAT microblaze_target_format()
+extern const char *microblaze_target_format (void);
+//#define TARGET_FORMAT (target_big_endian ? "elf32-microblaze" : "elf32-microblazeel")
 
 #define ELF_TC_SPECIAL_SECTIONS \
   { ".sdata",		SHT_PROGBITS,	SHF_ALLOC + SHF_WRITE }, \

@@ -3686,10 +3686,16 @@ open_input_bfds (lang_statement_union_type *s, enum open_bfd_mode mode)
 	    plugin_insert = NULL;
 #endif
 	  break;
+         /* This is from a --defsym on the command line.  */
 	case lang_assignment_statement_enum:
-	  if (s->assignment_statement.exp->type.node_class != etree_assert)
-	    exp_fold_tree_no_dot (s->assignment_statement.exp);
-	  break;
+          if (s->assignment_statement.exp->type.node_class != etree_assert)
+          {
+          if(!(s->assignment_statement.exp->assign.defsym) && (s->assignment_statement.exp->type.node_class == etree_provide))
+          ;
+          else
+          exp_fold_tree_no_dot (s->assignment_statement.exp);
+          }
+          break;
 	default:
 	  break;
 	}
