@@ -869,15 +869,11 @@ case "${targ}" in
   microblazeel*-*)
     targ_defvec=microblaze_elf32_le_vec
     targ_selvecs=microblaze_elf32_vec
-    targ64_selvecs=microblaze_elf64_vec
-    targ64_selvecs=microblaze_elf64_le_vec
     ;;
 
   microblaze*-*)
     targ_defvec=microblaze_elf32_vec
     targ_selvecs=microblaze_elf32_le_vec
-    targ64_selvecs=microblaze_elf64_vec
-    targ64_selvecs=microblaze_elf64_le_vec
     ;;
 
 #ifdef BFD64
