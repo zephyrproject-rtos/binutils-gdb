@@ -7412,7 +7412,7 @@ rewrite_elf_program_header (bfd *ibfd, bfd *obfd, bfd_vma maxpagesize)
 		      /* If the first section in a segment does not start at
 			 the beginning of the segment, then something is
 			 wrong.  */
-		      if (align_power (map->p_paddr
+		      if ((align_power (map->p_paddr
 				       + (map->includes_filehdr
 					  ? iehdr->e_ehsize : 0)
 				       + (map->includes_phdrs
@@ -7420,6 +7420,7 @@ rewrite_elf_program_header (bfd *ibfd, bfd *obfd, bfd_vma maxpagesize)
 					  : 0),
 				       output_section->alignment_power * opb)
 			  != output_section->lma * opb)
+			  && (map->p_paddr != output_section->lma * opb))
 			goto sorry;
 		    }
 		  else
