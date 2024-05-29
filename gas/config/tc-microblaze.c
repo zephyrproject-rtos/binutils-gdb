@@ -35,8 +35,13 @@
 #define streq(a,b) (strcmp (a, b) == 0)
 #endif
 
+static int microblaze_arch_size = 0;
+
 #define OPTION_EB (OPTION_MD_BASE + 0)
 #define OPTION_EL (OPTION_MD_BASE + 1)
+#define OPTION_LITTLE (OPTION_MD_BASE + 2)
+#define OPTION_BIG (OPTION_MD_BASE + 3)
+#define OPTION_M64 (OPTION_MD_BASE + 4)
 
 void microblaze_generate_symbol (char *sym);
 static bool check_spl_reg (unsigned *);
@@ -89,6 +94,8 @@ const char FLT_CHARS[] = "rRsSfFdDxXpP";
 #define TLSTPREL_OFFSET      16
 #define TEXT_OFFSET	     17
 #define TEXT_PC_OFFSET       18
+#define DEFINED_64_OFFSET   19
+#define DEFINED_64_PC_OFFSET 20 
 
 /* Initialize the relax table.  */
 const relax_typeS md_relax_table[] =
@@ -111,7 +118,10 @@ const relax_typeS md_relax_table[] =
   { 0x7fffffff, 0x80000000, INST_WORD_SIZE*2, 0 },  /* 15: TLSGOTTPREL_OFFSET.  */
   { 0x7fffffff, 0x80000000, INST_WORD_SIZE*2, 0 },  /* 16: TLSTPREL_OFFSET.  */
   { 0x7fffffff, 0x80000000, INST_WORD_SIZE*2, 0 },  /* 17: TEXT_OFFSET.  */
-  { 0x7fffffff, 0x80000000, INST_WORD_SIZE*2, 0 }   /* 18: TEXT_PC_OFFSET.  */
+  { 0x7fffffff, 0x80000000, INST_WORD_SIZE*2, 0 },   /* 18: TEXT_PC_OFFSET.  */
+//  { 0x7fffffff, 0x80000000, INST_WORD_SIZE*2, 0 }   /* 16: TLSTPREL_OFFSET.  */
+  { 0x7fffffffffffffff, 0x8000000000000000, INST_WORD_SIZE, 0 },   /* 19: DEFINED_64_OFFSET.  */
+  { 0x7fffffffffffffff, 0x8000000000000000, INST_WORD_SIZE*2, 0 }   /* 20: DEFINED_64_PC_OFFSET.  */
 };
 
 static htab_t  opcode_hash_control;	/* Opcode mnemonics.  */
@@ -375,6 +385,17 @@ microblaze_s_weakext (int ignore ATTRIBUTE_UNUSED)
   demand_empty_rest_of_line ();
 }
 
+/* Handle the .gpword pseudo-op, Pass to s_rva */
+
+static void
+microblaze_s_gpword (int ignore ATTRIBUTE_UNUSED)
+{
+  int size = 4;
+  if (microblaze_arch_size == 64)
+    size = 8;
+  s_rva(size);
+}
+
 /* This table describes all the machine specific pseudo-ops the assembler
    has to support.  The fields are:
    Pseudo-op name without dot
@@ -391,7 +412,7 @@ const pseudo_typeS md_pseudo_table[] =
   {"data32", cons, 4},     /* Same as word.  */
   {"ent", s_func, 0}, /* Treat ent as function entry point.  */
   {"end", microblaze_s_func, 1}, /* Treat end as function end point.  */
-  {"gpword", s_rva, 4}, /* gpword label => store resolved label address in data section.  */
+  {"gpword", microblaze_s_gpword, 0}, /* gpword label => store resolved label address in data section.  */
   {"weakext", microblaze_s_weakext, 0},
   {"rodata", microblaze_s_rdata, 0},
   {"sdata2", microblaze_s_rdata, 1},
@@ -400,6 +421,7 @@ const pseudo_typeS md_pseudo_table[] =
   {"sbss", microblaze_s_bss, 1},
   {"text", microblaze_s_text, 0},
   {"word", cons, 4},
+  {"dword", cons, 8},
   {"frame", s_ignore, 0},
   {"mask", s_ignore, 0}, /* Emitted by gcc.  */
   {NULL, NULL, 0}
@@ -411,13 +433,34 @@ const pseudo_typeS md_pseudo_table[] =
 void
 md_begin (void)
 {
-  const struct op_code_struct * opcode;
+  struct op_code_struct * opcode;
+  const char *prev_name = "";
 
   opcode_hash_control = str_htab_create ();
 
   /* Insert unique names into hash table.  */
-  for (opcode = microblaze_opcodes; opcode->name; opcode ++)
-    str_hash_insert (opcode_hash_control, opcode->name, opcode, 0);
+  for (opcode = (struct microblaze_opcodes *)microblaze_opcodes; opcode->name; opcode ++)
+    {
+      if (strcmp (prev_name, opcode->name))
+	{
+	  prev_name = (char *) opcode->name;
+          str_hash_insert (opcode_hash_control, opcode->name, opcode, 0);
+        }
+    }
+}
+
+static int
+is_reg (char * s)
+{
+  int is_reg = 0; 
+  /* Strip leading whitespace.  */
+  while (ISSPACE (* s))
+    ++ s;
+  if (TOLOWER (s[0]) == 'r')
+    {
+	 is_reg =1;
+    }
+  return is_reg;
 }
 
 /* Try to parse a reg name.  */
@@ -755,11 +798,79 @@ parse_imm (char * s, expressionS * e, offsetT min, offsetT max)
       if ((e->X_add_number >> 31) == 1)
 	e->X_add_number |= -((addressT) (1U << 31));
 
-      if (e->X_add_number < min || e->X_add_number > max)
+      if ((int)e->X_add_number < min || (int)e->X_add_number > max)
 	{
 	  as_fatal (_("operand must be absolute in range %lx..%lx, not %lx"),
 		    (long) min, (long) max, (long) e->X_add_number);
 	}
+    }
+
+  if (atp)
+    {
+      *atp = '@'; /* restore back (needed?)  */
+      if (new_pointer >= atp)
+        new_pointer += ilen + 1; /* sizeof (imm_suffix) + 1 for '@' */
+    }
+  return new_pointer;
+}
+
+ static char *
+parse_imml (char * s, expressionS * e, long long min, long long max)
+{
+  char *new_pointer;
+  char *atp;
+  int itype, ilen;
+
+  ilen = 0;
+
+  /* Find the start of "@GOT" or "@PLT" suffix (if any) */
+  for (atp = s; *atp != '@'; atp++)
+    if (is_end_of_line[(unsigned char) *atp])
+      break;
+
+  if (*atp == '@')
+    {
+      itype = match_imm (atp + 1, &ilen);
+      if (itype != 0)
+        {
+          *atp = 0;
+          e->X_md = itype;
+        }
+      else
+        {
+          atp = NULL;
+          e->X_md = 0;
+          ilen = 0;
+        }
+      *atp = 0;
+    }
+  else
+    {
+      atp = NULL;
+      e->X_md = 0;
+    }
+
+  if (atp && !GOT_symbol)
+    {
+      GOT_symbol = symbol_find_or_make (GOT_SYMBOL_NAME);
+    }
+
+  new_pointer = parse_exp (s, e);
+
+  if (!GOT_symbol && ! strncmp (s, GOT_SYMBOL_NAME, 20))
+    {
+      GOT_symbol = symbol_find_or_make (GOT_SYMBOL_NAME);
+    }
+
+  if (e->X_op == O_absent)
+    ; /* An error message has already been emitted.  */
+  else if ((e->X_op != O_constant && e->X_op != O_symbol) )
+    as_fatal (_("operand must be a constant or a label"));
+  else if ((e->X_op == O_constant) && ((long long) e->X_add_number < min
+				       || (long long) e->X_add_number > max))
+    {
+      as_fatal (_("operand must be absolute in range %lld..%lld, not %lld"),
+                min, max, (long long) e->X_add_number);
     }
 
   if (atp)
@@ -825,7 +936,7 @@ check_got (int * got_type, int * got_len)
 extern bfd_reloc_code_real_type
 parse_cons_expression_microblaze (expressionS *exp, int size)
 {
-  if (size == 4)
+  if (size == 4 || (microblaze_arch_size == 64 && size == 8))
     {
       /* Handle @GOTOFF et.al.  */
       char *save, *gotfree_copy;
@@ -857,6 +968,7 @@ parse_cons_expression_microblaze (expressionS *exp, int size)
 
 static const char * str_microblaze_ro_anchor = "RO";
 static const char * str_microblaze_rw_anchor = "RW";
+static const char * str_microblaze_64 = "64";
 
 static bool
 check_spl_reg (unsigned * reg)
@@ -906,7 +1018,8 @@ md_assemble (char * str)
 {
   char * op_start;
   char * op_end;
-  struct op_code_struct * opcode, *opcode1;
+  char * temp_op_end;
+  struct op_code_struct * opcode, *opcode1, *opcode2;
   char * output = NULL;
   int nlen = 0;
   int i;
@@ -915,9 +1028,11 @@ md_assemble (char * str)
   unsigned reg2;
   unsigned reg3;
   unsigned isize;
-  unsigned int immed = 0, temp;
-  expressionS exp;
+  unsigned long long immed = 0, immed2 = 0, temp;
+  expressionS exp, exp1;
   char name[20];
+  long immedl;
+  int reg = 0;
 
   /* Drop leading whitespace.  */
   while (ISSPACE (* str))
@@ -948,7 +1063,78 @@ md_assemble (char * str)
       as_bad (_("unknown opcode \"%s\""), name);
       return;
     }
-
+   
+  if ((microblaze_arch_size == 64) && (streq (name, "addli") || streq (name, "addlic") ||
+        streq (name, "addlik") || streq (name, "addlikc") || streq (name, "rsubli") 
+	|| streq (name, "rsublic") || streq (name, "rsublik") || streq (name, "rsublikc") 
+	|| streq (name, "andli") || streq (name, "andnli") || streq (name, "orli") 
+	|| streq (name, "xorli")))
+    {
+      temp_op_end = op_end;
+      if (strcmp (temp_op_end, ""))
+        temp_op_end = parse_reg (temp_op_end + 1, &reg1);  /* Get rd.  */
+      if (strcmp (temp_op_end, ""))
+        reg  = is_reg (temp_op_end + 1);
+      if (reg) 
+	{
+          
+ 	  opcode->inst_type=INST_TYPE_RD_R1_IMML;
+          opcode->inst_offset_type = OPCODE_MASK_H;
+          if (streq (name, "addli"))
+ 	    opcode->bit_sequence = ADDLI_MASK;
+          else if (streq (name, "addlic"))
+ 	    opcode->bit_sequence = ADDLIC_MASK;
+          else if (streq (name, "addlik"))
+ 	    opcode->bit_sequence = ADDLIK_MASK;
+          else if (streq (name, "addlikc"))
+ 	    opcode->bit_sequence = ADDLIKC_MASK;
+          else if (streq (name, "rsubli"))
+ 	    opcode->bit_sequence = RSUBLI_MASK;
+          else if (streq (name, "rsublic"))
+ 	    opcode->bit_sequence = RSUBLIC_MASK;
+          else if (streq (name, "rsublik"))
+ 	    opcode->bit_sequence = RSUBLIK_MASK;
+          else if (streq (name, "rsublikc"))
+ 	    opcode->bit_sequence = RSUBLIKC_MASK;
+          else if (streq (name, "andli"))
+ 	    opcode->bit_sequence = ANDLI_MASK;
+          else if (streq (name, "andnli"))
+ 	    opcode->bit_sequence = ANDLNI_MASK;
+          else if (streq (name, "orli"))
+ 	    opcode->bit_sequence = ORLI_MASK;
+          else if (streq (name, "xorli"))
+ 	    opcode->bit_sequence = XORLI_MASK;
+	}
+      else
+        {
+	  opcode->inst_type=INST_TYPE_RD_IMML;
+          opcode->inst_offset_type = OPCODE_MASK_LIMM;
+          if (streq (name, "addli"))
+ 	    opcode->bit_sequence = ADDLI_ONE_REG_MASK;
+          else if (streq (name, "addlic"))
+ 	    opcode->bit_sequence = ADDLIC_ONE_REG_MASK;
+          else if (streq (name, "addlik"))
+ 	    opcode->bit_sequence = ADDLIK_ONE_REG_MASK;
+          else if (streq (name, "addlikc"))
+ 	    opcode->bit_sequence = ADDLIKC_ONE_REG_MASK;
+          else if (streq (name, "rsubli"))
+ 	    opcode->bit_sequence = RSUBLI_ONE_REG_MASK;
+          else if (streq (name, "rsublic"))
+ 	    opcode->bit_sequence = RSUBLIC_ONE_REG_MASK;
+          else if (streq (name, "rsublik"))
+ 	    opcode->bit_sequence = RSUBLIK_ONE_REG_MASK;
+          else if (streq (name, "rsublikc"))
+ 	    opcode->bit_sequence = RSUBLIKC_ONE_REG_MASK;
+          else if (streq (name, "andli"))
+ 	    opcode->bit_sequence = ANDLI_ONE_REG_MASK;
+          else if (streq (name, "andnli"))
+ 	    opcode->bit_sequence = ANDLNI_ONE_REG_MASK;
+          else if (streq (name, "orli"))
+ 	    opcode->bit_sequence = ORLI_ONE_REG_MASK;
+          else if (streq (name, "xorli"))
+ 	    opcode->bit_sequence = XORLI_ONE_REG_MASK;
+        }
+    }
   inst = opcode->bit_sequence;
   isize = 4;
 
@@ -1017,7 +1203,12 @@ md_assemble (char * str)
           reg2 = 0;
         }
       if (strcmp (op_end, ""))
+        {
+        if(microblaze_arch_size == 64)
+        op_end = parse_imml (op_end + 1, & exp, MIN_IMML, MAX_IMML);
+	else
 	op_end = parse_imm (op_end + 1, & exp, MIN_IMM, MAX_IMM);
+	}
       else
 	as_fatal (_("Error in statement syntax"));
 
@@ -1036,8 +1227,16 @@ md_assemble (char * str)
 	    as_fatal (_("lmi pseudo instruction should not use a label in imm field"));
 	  else if (streq (name, "smi"))
 	    as_fatal (_("smi pseudo instruction should not use a label in imm field"));
-
-	  if (reg2 == REG_ROSDP)
+          if(streq (name, "lli") || streq (name, "sli"))
+            opc = str_microblaze_64;
+          else if ((microblaze_arch_size == 64) && ((streq (name, "lbui")
+			|| streq (name, "lhui") || streq (name, "lwi") || streq (name, "sbi")
+			|| streq (name, "shi") || streq (name, "swi"))))
+	    {
+              opc = str_microblaze_64;
+	      subtype = opcode->inst_offset_type;
+	    }
+	  else if (reg2 == REG_ROSDP)
 	    opc = str_microblaze_ro_anchor;
 	  else if (reg2 == REG_RWSDP)
 	    opc = str_microblaze_rw_anchor;
@@ -1104,36 +1303,87 @@ md_assemble (char * str)
               inst |= (immed << IMM_LOW) & IMM_MASK;
             }
 	}
-      else
-	{
-          temp = immed & 0xFFFF8000;
-          if ((temp != 0) && (temp != 0xFFFF8000))
-	    {
+      else if (streq (name, "lli") || streq (name, "sli") || ((microblaze_arch_size == 64)
+		&& ((streq (name, "lbui")) || streq (name, "lhui")
+		|| streq (name, "lwi") || streq (name, "sbi")
+                || streq (name, "shi") || streq (name, "swi"))))
+        {
+          temp = ((long long)immed) & 0xFFFFFFFFFFFF8000;
+          if (temp != 0 && temp != 0xFFFFFFFFFFFF8000)
+            {
               /* Needs an immediate inst.  */
-	      opcode1
-		= (struct op_code_struct *) str_hash_find (opcode_hash_control,
-							   "imm");
-              if (opcode1 == NULL)
+	   if (((long long)immed) > (long long)-549755813888 && ((long long)immed) < (long long)549755813887)
+	     {
+             opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+             if (opcode1 == NULL)
                 {
-                  as_bad (_("unknown opcode \"%s\""), "imm");
+                  as_bad (_("unknown opcode \"%s\""), "imml");
                   return;
                 }
-
               inst1 = opcode1->bit_sequence;
-              inst1 |= ((immed & 0xFFFF0000) >> 16) & IMM_MASK;
+              inst1 |= ((immed & 0x000000FFFFFF0000L) >> 16) & IMML_MASK;
               output[0] = INST_BYTE0 (inst1);
               output[1] = INST_BYTE1 (inst1);
               output[2] = INST_BYTE2 (inst1);
               output[3] = INST_BYTE3 (inst1);
               output = frag_more (isize);
-	    }
-	  inst |= (reg1 << RD_LOW) & RD_MASK;
-	  inst |= (reg2 << RA_LOW) & RA_MASK;
-	  inst |= (immed << IMM_LOW) & IMM_MASK;
-	}
+            }
+	  else 
+           {
+           opcode2 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+           opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+              if (opcode1 == NULL || opcode2 == NULL)
+                {
+                  as_bad (_("unknown opcode \"%s\""), "imml");
+                  return;
+                }
+              inst1 = opcode2->bit_sequence;
+              inst1 |= ((immed & 0xFFFFFF0000000000L) >> 40) & IMML_MASK;
+              output[0] = INST_BYTE0 (inst1);
+              output[1] = INST_BYTE1 (inst1);
+              output[2] = INST_BYTE2 (inst1);
+              output[3] = INST_BYTE3 (inst1);
+              output = frag_more (isize);
+              inst1 = opcode1->bit_sequence;
+              inst1 |= ((immed & 0x000000FFFFFF0000L) >> 16) & IMML_MASK;
+              output[0] = INST_BYTE0 (inst1);
+              output[1] = INST_BYTE1 (inst1);
+              output[2] = INST_BYTE2 (inst1);
+              output[3] = INST_BYTE3 (inst1);
+              output = frag_more (isize);
+            }
+	  }
+          inst |= (reg1 << RD_LOW) & RD_MASK;
+          inst |= (reg2 << RA_LOW) & RA_MASK;
+          inst |= (immed << IMM_LOW) & IMM_MASK;
+         }
+       else 
+	 {
+           temp = immed & 0xFFFF8000;
+           if ((temp != 0) && (temp != 0xFFFF8000))
+	     {
+               /* Needs an immediate inst.  */
+               opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imm");
+               if (opcode1 == NULL)
+                 {
+                   as_bad (_("unknown opcode \"%s\""), "imm");
+                   return;
+                 }
+	       inst1 = opcode1->bit_sequence;
+               inst1 |= ((immed & 0xFFFF0000) >> 16) & IMM_MASK;
+               output[0] = INST_BYTE0 (inst1);
+               output[1] = INST_BYTE1 (inst1);
+               output[2] = INST_BYTE2 (inst1);
+               output[3] = INST_BYTE3 (inst1);
+               output = frag_more (isize);
+	     }
+	   inst |= (reg1 << RD_LOW) & RD_MASK;
+	   inst |= (reg2 << RA_LOW) & RA_MASK;
+	   inst |= (immed << IMM_LOW) & IMM_MASK;
+	 }
       break;
 
-    case INST_TYPE_RD_R1_IMM5:
+    case INST_TYPE_RD_R1_IMMS:
       if (strcmp (op_end, ""))
         op_end = parse_reg (op_end + 1, &reg1);  /* Get rd.  */
       else
@@ -1167,16 +1417,101 @@ md_assemble (char * str)
           immed = exp.X_add_number;
         }
 
-      if (immed != (immed % 32))
+      if ((immed != (immed % 32)) &&
+          (opcode->instr == bslli || opcode->instr == bsrai || opcode->instr == bsrli))
 	{
           as_warn (_("Shift value > 32. using <value %% 32>"));
           immed = immed % 32;
         }
+      else if (immed != (immed % 64))
+	{
+          as_warn (_("Shift value > 64. using <value %% 64>"));
+          immed = immed % 64;
+        }
       inst |= (reg1 << RD_LOW) & RD_MASK;
       inst |= (reg2 << RA_LOW) & RA_MASK;
-      inst |= (immed << IMM_LOW) & IMM5_MASK;
+      inst |= (immed << IMM_LOW) & IMM6_MASK;
       break;
+ case INST_TYPE_RD_R1_IMMW_IMMS:
+      if (strcmp (op_end, ""))
+        op_end = parse_reg (op_end + 1, &reg1);  /* Get rd.  */
+      else
+	{
+          as_fatal (_("Error in statement syntax"));
+          reg1 = 0;
+        }
+      if (strcmp (op_end, ""))
+        op_end = parse_reg (op_end + 1, &reg2);  /* Get r1.  */
+      else
+	{
+          as_fatal (_("Error in statement syntax"));
+          reg2 = 0;
+        }
 
+      /* Check for spl registers.  */
+      if (check_spl_reg (&reg1))
+        as_fatal (_("Cannot use special register with this instruction"));
+      if (check_spl_reg (&reg2))
+        as_fatal (_("Cannot use special register with this instruction"));
+
+      /* Width immediate value.  */
+      if (strcmp (op_end, ""))
+        op_end = parse_imm (op_end + 1, &exp, MIN_IMM, MAX_IMM);
+      else
+        as_fatal (_("Error in statement syntax"));
+      if (exp.X_op != O_constant)
+	{
+          as_warn (_("Symbol used as immediate width value for bit field instruction"));
+          immed = 1;
+        }
+      else
+        immed = exp.X_add_number;
+      if (opcode->instr == bsefi && immed > 31)
+        as_fatal (_("Width value must be less than 32"));
+      else if (opcode->instr == bslefi && immed > 63)
+        as_fatal (_("Width value must be less than 64"));
+
+      /* Shift immediate value.  */
+      if (strcmp (op_end, ""))
+        op_end = parse_imm (op_end + 1, &exp, MIN_IMM, MAX_IMM);
+      else
+        as_fatal (_("Error in statement syntax"));
+      if (exp.X_op != O_constant)
+       {
+          as_warn (_("Symbol used as immediate shift value for bit field instruction"));
+          immed2 = 0;
+        }
+      else
+        {
+          output = frag_more (isize);
+          immed2 = exp.X_add_number;
+	}
+      if ((immed2 != (immed2 % 32)) && (opcode->instr == bsefi || opcode->instr == bsifi))
+	{
+          
+	  as_warn (_("Shift value greater than 32. using <value %% 32>"));
+          immed2 = immed2 % 32;
+        }
+      else if (immed2 != (immed2 % 64))
+	{
+          as_warn (_("Shift value greater than 64. using <value %% 64>"));
+          immed2 = immed2 % 64;
+        }
+
+      /* Check combined value.  */
+      if ((immed + immed2 > 32) && (opcode->instr == bsefi || opcode->instr == bsifi))
+        as_fatal (_("Width value + shift value must not be greater than 32"));
+
+      else if (immed + immed2 > 64)
+        as_fatal (_("Width value + shift value must not be greater than 64"));
+      inst |= (reg1 << RD_LOW) & RD_MASK;
+      inst |= (reg2 << RA_LOW) & RA_MASK;
+      if (opcode->instr == bsefi || opcode->instr == bslefi)
+        inst |= (immed & IMM6_MASK) << IMM_WIDTH_LOW; /* bsefi or bslefi */
+      else
+        inst |= ((immed + immed2 - 1) & IMM6_MASK) << IMM_WIDTH_LOW; /* bsifi or bslifi */
+      inst |= (immed2 << IMM_LOW) & IMM6_MASK;
+      break;
     case INST_TYPE_R1_R2:
       if (strcmp (op_end, ""))
         op_end = parse_reg (op_end + 1, &reg1);  /* Get r1.  */
@@ -1275,7 +1610,7 @@ md_assemble (char * str)
         as_fatal (_("Cannot use special register with this instruction"));
 
       if (exp.X_op != O_constant)
-        as_fatal (_("Symbol used as immediate value for msrset/msrclr instructions"));
+        as_fatal (_("Symbol used as immediate value for arithmetic long instructions"));
       else
 	{
           output = frag_more (isize);
@@ -1285,6 +1620,95 @@ md_assemble (char * str)
       inst |= (immed << IMM_LOW) & IMM15_MASK;
       break;
 
+    case INST_TYPE_RD_IMML:
+      if (strcmp (op_end, ""))
+        op_end = parse_reg (op_end + 1, &reg1);  /* Get rd.  */
+      else
+        {
+          as_fatal (_("Error in statement syntax"));
+          reg1 = 0;
+        }
+
+      if (strcmp (op_end, ""))
+        op_end = parse_imml (op_end + 1, & exp, MIN_IMML, MAX_IMML);
+      else
+        as_fatal (_("Error in statement syntax"));
+
+      /* Check for spl registers. */
+      if (check_spl_reg (&reg1))
+        as_fatal (_("Cannot use special register with this instruction"));
+      if (exp.X_op != O_constant)
+	{
+          char *opc = NULL;
+          relax_substateT subtype;
+
+          if (exp.X_md != 0)
+            subtype = get_imm_otype(exp.X_md);
+          else
+            subtype = opcode->inst_offset_type;
+
+          output = frag_var (rs_machine_dependent,
+                             isize * 2, 
+                             isize * 2,
+                             subtype,   
+                             exp.X_add_symbol,
+                             exp.X_add_number,
+                             (char *) opc);
+          immed = 0L;
+	}		
+      else
+        {
+          output = frag_more (isize);
+          immed = exp.X_add_number;
+          temp = ((long long)immed) & 0xFFFFFFFFFFFF8000;
+          if (temp != 0 && temp != 0xFFFFFFFFFFFF8000 && temp != 0x8000)
+            {
+              /* Needs an immediate inst.  */
+           if (((long long)immed) > (long long)-549755813888 && ((long long)immed) < (long long)549755813887)
+	    {
+            opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+              if (opcode1 == NULL)
+                {
+                  as_bad (_("unknown opcode \"%s\""), "imml");
+                  return;
+                }
+              inst1 = opcode1->bit_sequence;
+              inst1 |= ((immed & 0x000000FFFFFF0000L) >> 16) & IMML_MASK;
+              output[0] = INST_BYTE0 (inst1);
+              output[1] = INST_BYTE1 (inst1);
+              output[2] = INST_BYTE2 (inst1);
+              output[3] = INST_BYTE3 (inst1);
+              output = frag_more (isize);
+            }
+          else {
+           opcode2 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+           opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+              if (opcode1 == NULL || opcode2 == NULL)
+                {
+                  as_bad (_("unknown opcode \"%s\""), "imml");
+                  return;
+                }
+              inst1 = opcode2->bit_sequence;
+              inst1 |= ((immed & 0xFFFFFF0000000000L) >> 40) & IMML_MASK;
+              output[0] = INST_BYTE0 (inst1);
+              output[1] = INST_BYTE1 (inst1);
+              output[2] = INST_BYTE2 (inst1);
+              output[3] = INST_BYTE3 (inst1);
+              output = frag_more (isize);
+              inst1 = opcode1->bit_sequence;
+              inst1 |= ((immed & 0x000000FFFFFF0000L) >> 16) & IMML_MASK;
+              output[0] = INST_BYTE0 (inst1);
+              output[1] = INST_BYTE1 (inst1);
+              output[2] = INST_BYTE2 (inst1);
+              output[3] = INST_BYTE3 (inst1);
+              output = frag_more (isize);
+          }
+	  }
+        }
+      inst |= (reg1 << RD_LOW) & RD_MASK;
+      inst |= (immed << IMM_LOW) & IMM16_MASK;
+      break;
+	
     case INST_TYPE_R1_RFSL:
       if (strcmp (op_end, ""))
         op_end = parse_reg (op_end + 1, &reg1);  /* Get r1.  */
@@ -1564,6 +1988,7 @@ md_assemble (char * str)
       temp = immed & 0xFFFF8000;
       if ((temp != 0) && (temp != 0xFFFF8000))
 	{
+
           /* Needs an immediate inst.  */
 	  opcode1
 	    = (struct op_code_struct *) str_hash_find (opcode_hash_control,
@@ -1596,7 +2021,12 @@ md_assemble (char * str)
           reg1 = 0;
         }
       if (strcmp (op_end, ""))
+      {
+        if(microblaze_arch_size == 64)
+        op_end = parse_imml (op_end + 1, & exp, MIN_IMML, MAX_IMML);
+        else
         op_end = parse_imm (op_end + 1, & exp, MIN_IMM, MAX_IMM);
+      }
       else
         as_fatal (_("Error in statement syntax"));
 
@@ -1611,6 +2041,11 @@ md_assemble (char * str)
 
 	  if (exp.X_md != 0)
 	    subtype = get_imm_otype(exp.X_md);
+          else if (streq (name, "brealid") || streq (name, "breaid") || streq (name, "breai"))
+            {
+              opc = str_microblaze_64;
+	      subtype = opcode->inst_offset_type;
+	    }
 	  else
 	    subtype = opcode->inst_offset_type;
 
@@ -1628,7 +2063,57 @@ md_assemble (char * str)
           output = frag_more (isize);
           immed = exp.X_add_number;
         }
-
+      if (streq (name, "brealid") || streq (name, "breaid") || streq (name, "breai"))
+        {
+          temp = ((long long)immed) & 0xFFFFFFFFFFFF8000;
+          if (temp != 0 && temp != 0xFFFFFFFFFFFF8000)
+            {
+              /* Needs an immediate inst.  */
+           if (((long long)immed) > (long long)-549755813888 && ((long long)immed) < (long long)549755813887)
+	    {
+            opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+              if (opcode1 == NULL)
+                {
+                  as_bad (_("unknown opcode \"%s\""), "imml");
+                  return;
+                }
+              inst1 = opcode1->bit_sequence;
+              inst1 |= ((immed & 0x000000FFFFFF0000L) >> 16) & IMML_MASK;
+              output[0] = INST_BYTE0 (inst1);
+              output[1] = INST_BYTE1 (inst1);
+              output[2] = INST_BYTE2 (inst1);
+              output[3] = INST_BYTE3 (inst1);
+              output = frag_more (isize);
+            }
+          else {
+           opcode2 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+           opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+              if (opcode1 == NULL || opcode2 == NULL)
+                {
+                  as_bad (_("unknown opcode \"%s\""), "imml");
+                  return;
+                }
+              inst1 = opcode2->bit_sequence;
+              inst1 |= ((immed & 0xFFFFFF0000000000L) >> 40) & IMML_MASK;
+              output[0] = INST_BYTE0 (inst1);
+              output[1] = INST_BYTE1 (inst1);
+              output[2] = INST_BYTE2 (inst1);
+              output[3] = INST_BYTE3 (inst1);
+              output = frag_more (isize);
+              inst1 = opcode1->bit_sequence;
+              inst1 |= ((immed & 0x000000FFFFFF0000L) >> 16) & IMML_MASK;
+              output[0] = INST_BYTE0 (inst1);
+              output[1] = INST_BYTE1 (inst1);
+              output[2] = INST_BYTE2 (inst1);
+              output[3] = INST_BYTE3 (inst1);
+              output = frag_more (isize);
+          }
+	  }
+      	  inst |= (reg1 << RD_LOW) & RD_MASK;
+          inst |= (immed << IMM_LOW) & IMM_MASK;
+         }
+       else 
+	 {
       temp = immed & 0xFFFF8000;
       if ((temp != 0) && (temp != 0xFFFF8000))
 	{
@@ -1653,6 +2138,7 @@ md_assemble (char * str)
 
       inst |= (reg1 << RD_LOW) & RD_MASK;
       inst |= (immed << IMM_LOW) & IMM_MASK;
+        }
       break;
 
     case INST_TYPE_R2:
@@ -1675,12 +2161,18 @@ md_assemble (char * str)
     case INST_TYPE_IMM:
       if (streq (name, "imm"))
         as_fatal (_("An IMM instruction should not be present in the .s file"));
-
-      op_end = parse_imm (op_end + 1, & exp, MIN_IMM, MAX_IMM);
+      if (microblaze_arch_size == 64)
+        op_end = parse_imml (op_end + 1, & exp, MIN_IMML, MAX_IMML);
+      else
+        op_end = parse_imm (op_end + 1, & exp, MIN_IMM, MAX_IMM);
 
       if (exp.X_op != O_constant)
 	{
-          char *opc = NULL;
+	  char *opc;
+          if (microblaze_arch_size == 64 && (streq (name, "brai") || streq (name, "braid")))
+            opc = str_microblaze_64;
+	  else
+            opc = NULL;
           relax_substateT subtype;
 
 	  if (exp.X_md != 0)
@@ -1703,29 +2195,79 @@ md_assemble (char * str)
           immed = exp.X_add_number;
         }
 
-
-      temp = immed & 0xFFFF8000;
-      if ((temp != 0) && (temp != 0xFFFF8000))
-	{
-          /* Needs an immediate inst.  */
-          opcode1
-	    = (struct op_code_struct *) str_hash_find (opcode_hash_control,
-						       "imm");
-          if (opcode1 == NULL)
-            {
-              as_bad (_("unknown opcode \"%s\""), "imm");
-              return;
+      if (microblaze_arch_size == 64 && (streq (name, "breai") || 
+            streq (name, "breaid") || 
+	    streq (name, "brai") || streq (name, "braid")))
+        {
+          temp = ((long long)immed) & 0xFFFFFFFFFFFF8000;
+          if (temp != 0 && temp != 0xFFFFFFFFFFFF8000 && temp != 0x8000)
+	    {
+              /* Needs an immediate inst.  */
+	  if (((long long)immed) > (long long)-549755813888 && ((long long)immed) < (long long)549755813887)
+	   {
+            opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+              if (opcode1 == NULL)
+                {
+                  as_bad (_("unknown opcode \"%s\""), "imml");
+                  return;
+                }
+              inst1 = opcode1->bit_sequence;
+              inst1 |= ((immed & 0x000000FFFFFF0000L) >> 16) & IMML_MASK;
+              output[0] = INST_BYTE0 (inst1);
+              output[1] = INST_BYTE1 (inst1);
+              output[2] = INST_BYTE2 (inst1);
+              output[3] = INST_BYTE3 (inst1);
+              output = frag_more (isize);
             }
+           else {
+           opcode2 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+           opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+              if (opcode1 == NULL || opcode2 == NULL)
+                {
+                  as_bad (_("unknown opcode \"%s\""), "imml");
+                  return;
+                }
+              inst1 = opcode2->bit_sequence;
+              inst1 |= ((immed & 0xFFFFFF0000000000L) >> 40) & IMML_MASK;
+              output[0] = INST_BYTE0 (inst1);
+              output[1] = INST_BYTE1 (inst1);
+              output[2] = INST_BYTE2 (inst1);
+              output[3] = INST_BYTE3 (inst1);
+              output = frag_more (isize);
+              inst1 = opcode1->bit_sequence;
+              inst1 |= ((immed & 0x000000FFFFFF0000L) >> 16) & IMML_MASK;
+              output[0] = INST_BYTE0 (inst1);
+              output[1] = INST_BYTE1 (inst1);
+              output[2] = INST_BYTE2 (inst1);
+              output[3] = INST_BYTE3 (inst1);
+              output = frag_more (isize);
+            }
+            }
+          inst |= (immed << IMM_LOW) & IMM_MASK;
+	}
+      else
+	{
+          temp = immed & 0xFFFF8000;
+          if ((temp != 0) && (temp != 0xFFFF8000))
+	    {
+              /* Needs an immediate inst.  */
+              opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imm");
+              if (opcode1 == NULL)
+                {
+                  as_bad (_("unknown opcode \"%s\""), "imm");
+                  return;
+                }
 
-          inst1 = opcode1->bit_sequence;
-          inst1 |= ((immed & 0xFFFF0000) >> 16) & IMM_MASK;
-          output[0] = INST_BYTE0 (inst1);
-          output[1] = INST_BYTE1 (inst1);
-          output[2] = INST_BYTE2 (inst1);
-          output[3] = INST_BYTE3 (inst1);
-          output = frag_more (isize);
-        }
-      inst |= (immed << IMM_LOW) & IMM_MASK;
+              inst1 = opcode1->bit_sequence;
+              inst1 |= ((immed & 0xFFFF0000) >> 16) & IMM_MASK;
+              output[0] = INST_BYTE0 (inst1);
+              output[1] = INST_BYTE1 (inst1);
+              output[2] = INST_BYTE2 (inst1);
+              output[3] = INST_BYTE3 (inst1);
+              output = frag_more (isize);
+            }
+          inst |= (immed << IMM_LOW) & IMM_MASK;
+	}
       break;
 
     case INST_TYPE_NONE:
@@ -1748,6 +2290,192 @@ md_assemble (char * str)
         immed = immed % 32;
       }
       inst |= (immed << IMM_MBAR);
+      break;
+    /* For 64-bit instructions */
+    case INST_TYPE_RD_R1_IMML:
+      if (strcmp (op_end, ""))
+	op_end = parse_reg (op_end + 1, &reg1);  /* Get rd.  */
+      else
+ 	{
+          as_fatal (_("Error in statement syntax"));
+          reg1 = 0;
+        }
+      if (strcmp (op_end, ""))
+	op_end = parse_reg (op_end + 1, &reg2);  /* Get r1.  */
+      else
+	{
+          as_fatal (_("Error in statement syntax"));
+          reg2 = 0;
+        }
+      if (strcmp (op_end, ""))
+	op_end = parse_imml (op_end + 1, & exp, MIN_IMML, MAX_IMML);
+      else
+	as_fatal (_("Error in statement syntax"));
+
+      /* Check for spl registers.  */
+      if (check_spl_reg (& reg1))
+	as_fatal (_("Cannot use special register with this instruction"));
+      if (check_spl_reg (& reg2))
+	as_fatal (_("Cannot use special register with this instruction"));
+
+      if (exp.X_op != O_constant)
+	{
+	  //char *opc = NULL;
+	  char *opc = str_microblaze_64;
+	  relax_substateT subtype;
+
+	  if (exp.X_md != 0)
+	    subtype = get_imm_otype(exp.X_md);
+	  else
+	    subtype = opcode->inst_offset_type;
+
+	  output = frag_var (rs_machine_dependent,
+			     isize * 2, /* maxm of 2 words.  */
+			     isize * 2, /* minm of 2 words.  */
+			     subtype,   /* PC-relative or not.  */
+			     exp.X_add_symbol,
+			     exp.X_add_number,
+			     (char *) opc);
+	  immedl = 0L;
+        }
+      else
+	{
+	  output = frag_more (isize);
+	  immedl = exp.X_add_number;
+	  if (((long long)immedl) > (long long)-549755813888 && ((long long)immedl) < (long long)549755813887)
+            {
+             opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+             if (opcode1 == NULL)
+             {
+              as_bad (_("unknown opcode \"%s\""), "imml");
+              return;
+             }
+          inst1 = opcode1->bit_sequence;
+          inst1 |= ((immedl & 0x000000FFFFFF0000L) >> 16) & IMML_MASK;
+          output[0] = INST_BYTE0 (inst1);
+          output[1] = INST_BYTE1 (inst1);
+          output[2] = INST_BYTE2 (inst1);
+          output[3] = INST_BYTE3 (inst1);
+          output = frag_more (isize);
+        }
+           else {
+           opcode2 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+           opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+       if (opcode2 == NULL || opcode1 == NULL)
+            {
+              as_bad (_("unknown opcode \"%s\""), "imml");
+              return;
+            }
+          inst1 = opcode2->bit_sequence;
+          inst1 |= ((immedl & 0xFFFFFF0000000000L) >> 40) & IMML_MASK;
+          output[0] = INST_BYTE0 (inst1);
+          output[1] = INST_BYTE1 (inst1);
+          output[2] = INST_BYTE2 (inst1);
+          output[3] = INST_BYTE3 (inst1);
+          output = frag_more (isize);
+          inst1 = opcode1->bit_sequence;
+          inst1 |= ((immedl & 0x000000FFFFFF0000L) >> 16) & IMML_MASK;
+          output[0] = INST_BYTE0 (inst1);
+          output[1] = INST_BYTE1 (inst1);
+          output[2] = INST_BYTE2 (inst1);
+          output[3] = INST_BYTE3 (inst1);
+          output = frag_more (isize);
+        }
+        }
+
+      inst |= (reg1 << RD_LOW) & RD_MASK;
+      inst |= (reg2 << RA_LOW) & RA_MASK;
+      inst |= (immedl << IMM_LOW) & IMM_MASK;
+      break;
+
+    case INST_TYPE_R1_IMML:
+      if (strcmp (op_end, ""))
+        op_end = parse_reg (op_end + 1, &reg1);  /* Get r1.  */
+      else
+	{
+          as_fatal (_("Error in statement syntax"));
+          reg1 = 0;
+        }
+      if (strcmp (op_end, ""))
+        op_end = parse_imml (op_end + 1, & exp, MIN_IMML, MAX_IMML);
+      else
+        as_fatal (_("Error in statement syntax"));
+
+      /* Check for spl registers.  */
+      if (check_spl_reg (&reg1))
+        as_fatal (_("Cannot use special register with this instruction"));
+
+      if (exp.X_op != O_constant)
+	{
+	  //char *opc = NULL;
+          char *opc = str_microblaze_64;
+          relax_substateT subtype;
+
+	  if (exp.X_md != 0)
+	    subtype = get_imm_otype(exp.X_md);
+	  else
+	    subtype = opcode->inst_offset_type;
+
+	  output = frag_var (rs_machine_dependent,
+			     isize * 2, /* maxm of 2 words.  */
+			     isize * 2, /* minm of 2 words.  */
+			     subtype,   /* PC-relative or not.  */
+			     exp.X_add_symbol,
+			     exp.X_add_number,
+			     (char *) opc);
+	  immedl = 0L;
+	}
+      else
+	{
+          output = frag_more (isize);
+          immedl = exp.X_add_number;
+	   if (((long long)immedl) > (long long)-549755813888 && ((long long)immedl) < (long long)549755813887)
+             {
+            opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+           if (opcode1 == NULL)
+            {
+              as_bad (_("unknown opcode \"%s\""), "imml");
+              return;
+            }
+          inst1 = opcode1->bit_sequence;
+          inst1 |= ((immedl & 0x000000FFFFFF0000L) >> 16) & IMML_MASK;
+          output[0] = INST_BYTE0 (inst1);
+          output[1] = INST_BYTE1 (inst1);
+          output[2] = INST_BYTE2 (inst1);
+          output[3] = INST_BYTE3 (inst1);
+          output = frag_more (isize);
+          }
+           else {
+           opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+           opcode2 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+       if (opcode2 == NULL || opcode1 == NULL)
+            {
+              as_bad (_("unknown opcode \"%s\""), "imml");
+              return;
+            }
+          inst1 = opcode2->bit_sequence;
+          inst1 |= ((immedl & 0xFFFFFF0000000000L) >> 40) & IMML_MASK;
+          output[0] = INST_BYTE0 (inst1);
+          output[1] = INST_BYTE1 (inst1);
+          output[2] = INST_BYTE2 (inst1);
+          output[3] = INST_BYTE3 (inst1);
+          output = frag_more (isize);
+          inst1 = opcode1->bit_sequence;
+          inst1 |= ((immedl & 0x000000FFFFFF0000L) >> 16) & IMML_MASK;
+          output[0] = INST_BYTE0 (inst1);
+          output[1] = INST_BYTE1 (inst1);
+          output[2] = INST_BYTE2 (inst1);
+          output[3] = INST_BYTE3 (inst1);
+          output = frag_more (isize);
+        }
+        }
+
+      inst |= (reg1 << RA_LOW) & RA_MASK;
+      inst |= (immedl << IMM_LOW) & IMM_MASK;
+      break;
+
+    case INST_TYPE_IMML:
+      as_fatal (_("An IMML instruction should not be present in the .s file"));
       break;
 
     default:
@@ -1854,6 +2582,9 @@ struct option md_longopts[] =
 {
   {"EB", no_argument, NULL, OPTION_EB},
   {"EL", no_argument, NULL, OPTION_EL},
+  {"mlittle-endian", no_argument, NULL, OPTION_LITTLE},
+  {"mbig-endian", no_argument, NULL, OPTION_BIG},
+  {"m64", no_argument, NULL, OPTION_M64},
   { NULL,          no_argument, NULL, 0}
 };
 
@@ -1895,6 +2626,22 @@ md_convert_frag (bfd * abfd ATTRIBUTE_UNUSED,
     case UNDEFINED_PC_OFFSET:
       fix_new (fragP, fragP->fr_fix, INST_WORD_SIZE * 2, fragP->fr_symbol,
 	       fragP->fr_offset, true, BFD_RELOC_64_PCREL);
+      fragP->fr_fix += INST_WORD_SIZE * 2;
+      fragP->fr_var = 0;
+      break;
+    case DEFINED_64_PC_OFFSET:
+      fix_new (fragP, fragP->fr_fix, INST_WORD_SIZE, fragP->fr_symbol,
+	         fragP->fr_offset, TRUE, BFD_RELOC_MICROBLAZE_64_PCREL);
+      fragP->fr_fix += INST_WORD_SIZE * 2;
+      fragP->fr_var = 0;
+      break;
+    case DEFINED_64_OFFSET:
+      if (fragP->fr_symbol == GOT_symbol)
+        fix_new (fragP, fragP->fr_fix, INST_WORD_SIZE, fragP->fr_symbol,
+	         fragP->fr_offset, false, BFD_RELOC_MICROBLAZE_64_GPC);
+      else
+        fix_new (fragP, fragP->fr_fix, INST_WORD_SIZE, fragP->fr_symbol,
+	         fragP->fr_offset, false, BFD_RELOC_MICROBLAZE_64);
       fragP->fr_fix += INST_WORD_SIZE * 2;
       fragP->fr_var = 0;
       break;
@@ -2001,8 +2748,8 @@ md_apply_fix (fixS *   fixP,
   /* Note: use offsetT because it is signed, valueT is unsigned.  */
   offsetT      val  = (offsetT) * valp;
   int          i;
-  struct op_code_struct * opcode1;
-  unsigned long inst1;
+  struct op_code_struct * opcode1, * opcode2;
+  unsigned long inst1,inst2;
 
   symname = fixP->fx_addsy ? S_GET_NAME (fixP->fx_addsy) : _("<unknown>");
 
@@ -2106,15 +2853,71 @@ md_apply_fix (fixS *   fixP,
       /* Don't do anything if the symbol is not defined.  */
       if (fixP->fx_addsy == NULL || S_IS_DEFINED (fixP->fx_addsy))
 	{
+	  if ((fixP->fx_r_type == BFD_RELOC_RVA) && (microblaze_arch_size == 64))
+            {
+	      if (target_big_endian)
+	        {
+	          buf[0] |= ((val >> 56) & 0xff);
+	          buf[1] |= ((val >> 48) & 0xff);
+	          buf[2] |= ((val >> 40) & 0xff);
+	          buf[3] |= ((val >> 32) & 0xff);
+	          buf[4] |= ((val >> 24) & 0xff);
+	          buf[5] |= ((val >> 16) & 0xff);
+	          buf[6] |= ((val >> 8) & 0xff);
+	          buf[7] |= (val & 0xff);
+	        }
+	      else
+	        {
+	          buf[7] |= ((val >> 56) & 0xff);
+	          buf[6] |= ((val >> 48) & 0xff);
+	          buf[5] |= ((val >> 40) & 0xff);
+	          buf[4] |= ((val >> 32) & 0xff);
+	          buf[3] |= ((val >> 24) & 0xff);
+	          buf[2] |= ((val >> 16) & 0xff);
+	          buf[1] |= ((val >> 8) & 0xff);
+	          buf[0] |= (val & 0xff);
+	        }
+	    }
+	  else {
+	    if (target_big_endian)
+	      {
+	        buf[0] |= ((val >> 24) & 0xff);
+	        buf[1] |= ((val >> 16) & 0xff);
+	        buf[2] |= ((val >> 8) & 0xff);
+	        buf[3] |= (val & 0xff);
+	      }
+	    else
+	      {
+	        buf[3] |= ((val >> 24) & 0xff);
+	        buf[2] |= ((val >> 16) & 0xff);
+	        buf[1] |= ((val >> 8) & 0xff);
+	        buf[0] |= (val & 0xff);
+	      }
+	  }
+	}
+      break;
+    
+    case BFD_RELOC_MICROBLAZE_EA64:
+      /* Don't do anything if the symbol is not defined.  */
+      if (fixP->fx_addsy == NULL || S_IS_DEFINED (fixP->fx_addsy))
+	{
 	  if (target_big_endian)
 	    {
-	      buf[0] |= ((val >> 24) & 0xff);
-	      buf[1] |= ((val >> 16) & 0xff);
-	      buf[2] |= ((val >> 8) & 0xff);
-	      buf[3] |= (val & 0xff);
+	      buf[0] |= ((val >> 56) & 0xff);
+	      buf[1] |= ((val >> 48) & 0xff);
+	      buf[2] |= ((val >> 40) & 0xff);
+	      buf[3] |= ((val >> 32) & 0xff);
+	      buf[4] |= ((val >> 24) & 0xff);
+	      buf[5] |= ((val >> 16) & 0xff);
+	      buf[6] |= ((val >> 8) & 0xff);
+	      buf[7] |= (val & 0xff);
 	    }
 	  else
 	    {
+	      buf[7] |= ((val >> 56) & 0xff);
+	      buf[6] |= ((val >> 48) & 0xff);
+	      buf[5] |= ((val >> 40) & 0xff);
+	      buf[4] |= ((val >> 32) & 0xff);
 	      buf[3] |= ((val >> 24) & 0xff);
 	      buf[2] |= ((val >> 16) & 0xff);
 	      buf[1] |= ((val >> 8) & 0xff);
@@ -2122,31 +2925,97 @@ md_apply_fix (fixS *   fixP,
 	    }
 	}
       break;
+
     case BFD_RELOC_64_PCREL:
     case BFD_RELOC_64:
     case BFD_RELOC_MICROBLAZE_64_TEXTREL:
-      /* Add an imm instruction.  First save the current instruction.  */
-      for (i = 0; i < INST_WORD_SIZE; i++)
-	buf[i + INST_WORD_SIZE] = buf[i];
+    case BFD_RELOC_MICROBLAZE_64:
+    case BFD_RELOC_MICROBLAZE_64_PCREL:
+      if (fixP->fx_r_type == BFD_RELOC_MICROBLAZE_64
+            || fixP->fx_r_type == BFD_RELOC_MICROBLAZE_64_PCREL || (fixP->fx_r_type == BFD_RELOC_64_PCREL && microblaze_arch_size == 64))
+        {
+          /* Generate the imm instruction.  */
+           if (((long long)val) > (long long)-549755813888 && ((long long)val) < (long long)549755813887)
+	   {
+        /* Add an imm instruction.  First save the current instruction.  */
+        for (i = 0; i < INST_WORD_SIZE; i++)
+        buf[i + INST_WORD_SIZE] = buf[i];
+        opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+          if (opcode1 == NULL)
+            {
+              as_bad (_("unknown opcode \"%s\""), "imml");
+              return;
+            }
 
-      /* Generate the imm instruction.  */
-      opcode1
-	= (struct op_code_struct *) str_hash_find (opcode_hash_control, "imm");
-      if (opcode1 == NULL)
-	{
-	  as_bad (_("unknown opcode \"%s\""), "imm");
-	  return;
-	}
-
-      inst1 = opcode1->bit_sequence;
-      if (fixP->fx_addsy == NULL || S_IS_DEFINED (fixP->fx_addsy))
-	inst1 |= ((val & 0xFFFF0000) >> 16) & IMM_MASK;
-
+           inst1 = opcode1->bit_sequence;
+           if (fixP->fx_addsy == NULL || S_IS_DEFINED (fixP->fx_addsy))
+             inst1 |= ((val & 0x000000FFFFFF0000L) >> 16) & IMML_MASK;
+           if (fixP->fx_r_type == BFD_RELOC_MICROBLAZE_64)
+             fixP->fx_r_type = BFD_RELOC_64;
+           if (fixP->fx_r_type == BFD_RELOC_MICROBLAZE_64_PCREL)
+             fixP->fx_r_type = BFD_RELOC_64_PCREL;
       buf[0] = INST_BYTE0 (inst1);
       buf[1] = INST_BYTE1 (inst1);
       buf[2] = INST_BYTE2 (inst1);
       buf[3] = INST_BYTE3 (inst1);
+	 }
+           else {
+      /* Add an imm instruction.  First save the current instruction.  */
+        for (i = 0; i < INST_WORD_SIZE; i++)
+        buf[i + INST_WORD_SIZE + 4] = buf[i];
 
+           opcode2 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+           opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+	   if (opcode1 == NULL || opcode2 ==NULL)
+              {
+	      as_bad (_("unknown opcode \"%s\""), "imml");
+              return;
+	      }
+           inst1 = opcode2->bit_sequence;
+           if (fixP->fx_addsy == NULL || S_IS_DEFINED (fixP->fx_addsy))
+             inst1 |= ((val & 0x000000FFFFFF0000L) >> 40) & IMML_MASK;
+           if (fixP->fx_r_type == BFD_RELOC_MICROBLAZE_64)
+             fixP->fx_r_type = BFD_RELOC_64;
+           if (fixP->fx_r_type == BFD_RELOC_MICROBLAZE_64_PCREL)
+             fixP->fx_r_type = BFD_RELOC_64_PCREL;
+           inst2 = opcode1->bit_sequence;
+           if (fixP->fx_addsy == NULL || S_IS_DEFINED (fixP->fx_addsy))
+             inst1 |= ((val & 0x000000FFFFFF0000L) >> 16) & IMML_MASK;
+           if (fixP->fx_r_type == BFD_RELOC_MICROBLAZE_64)
+             fixP->fx_r_type = BFD_RELOC_64;
+           if (fixP->fx_r_type == BFD_RELOC_MICROBLAZE_64_PCREL)
+             fixP->fx_r_type = BFD_RELOC_64_PCREL;
+	buf[0] = INST_BYTE0 (inst1);
+	buf[1] = INST_BYTE1 (inst1);
+	buf[2] = INST_BYTE2 (inst1);
+	buf[3] = INST_BYTE3 (inst1);
+	buf[4] = INST_BYTE0 (inst2);
+	buf[5] = INST_BYTE1 (inst2);
+	buf[6] = INST_BYTE2 (inst2);
+	buf[7] = INST_BYTE3 (inst2);
+           }
+         }
+      else
+        {
+      /* Add an imm instruction.  First save the current instruction.  */
+        for (i = 0; i < INST_WORD_SIZE; i++)
+        buf[i + INST_WORD_SIZE] = buf[i];
+          /* Generate the imm instruction.  */
+          opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imm");
+          if (opcode1 == NULL)
+	    {
+	      as_bad (_("unknown opcode \"%s\""), "imm");
+	      return;
+	    }
+
+          inst1 = opcode1->bit_sequence;
+          if (fixP->fx_addsy == NULL || S_IS_DEFINED (fixP->fx_addsy))
+	    inst1 |= ((val & 0xFFFF0000) >> 16) & IMM_MASK;
+      buf[0] = INST_BYTE0 (inst1);
+      buf[1] = INST_BYTE1 (inst1);
+      buf[2] = INST_BYTE2 (inst1);
+      buf[3] = INST_BYTE3 (inst1);
+         }
       /* Add the value only if the symbol is defined.  */
       if (fixP->fx_addsy == NULL || S_IS_DEFINED (fixP->fx_addsy))
 	{
@@ -2170,6 +3039,7 @@ md_apply_fix (fixS *   fixP,
       /* Fall through.  */
 
     case BFD_RELOC_MICROBLAZE_64_GOTPC:
+    case BFD_RELOC_MICROBLAZE_64_GPC:
     case BFD_RELOC_MICROBLAZE_64_GOT:
     case BFD_RELOC_MICROBLAZE_64_PLT:
     case BFD_RELOC_MICROBLAZE_64_GOTOFF:
@@ -2177,18 +3047,42 @@ md_apply_fix (fixS *   fixP,
       /* Add an imm instruction.  First save the current instruction.  */
       for (i = 0; i < INST_WORD_SIZE; i++)
 	buf[i + INST_WORD_SIZE] = buf[i];
-
       /* Generate the imm instruction.  */
-      opcode1
-	= (struct op_code_struct *) str_hash_find (opcode_hash_control, "imm");
+      if (fixP->fx_r_type == BFD_RELOC_MICROBLAZE_64_GPC) {
+           if (((long long)val) > (long long)-549755813888 && ((long long)val) < (long long)549755813887)
+           {
+           for (i = 0; i < INST_WORD_SIZE; i++)
+           buf[i + INST_WORD_SIZE] = buf[i];
+           opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+	   }
+           else {
+       for (i = 0; i < INST_WORD_SIZE; i++)
+        buf[i + INST_WORD_SIZE + 4] = buf[i]; 
+           opcode2 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+           opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imml");
+      inst2 = opcode2->bit_sequence;
+
+      /* We can fixup call to a defined non-global address
+ *          within the same section only.  */
+      buf[4] = INST_BYTE0 (inst2);
+      buf[5] = INST_BYTE1 (inst2);
+      buf[6] = INST_BYTE2 (inst2);
+      buf[7] = INST_BYTE3 (inst2);
+           }
+	}
+      else
+        opcode1 = (struct op_code_struct *) str_hash_find (opcode_hash_control, "imm");
       if (opcode1 == NULL)
 	{
-	  as_bad (_("unknown opcode \"%s\""), "imm");
+      for (i = 0; i < INST_WORD_SIZE; i++)
+        buf[i + INST_WORD_SIZE] = buf[i];
+          if (fixP->fx_r_type == BFD_RELOC_MICROBLAZE_64_GPC)
+	    as_bad (_("unknown opcode \"%s\""), "imml");
+          else
+	    as_bad (_("unknown opcode \"%s\""), "imm");
 	  return;
 	}
-
       inst1 = opcode1->bit_sequence;
-
       /* We can fixup call to a defined non-global address
 	 within the same section only.  */
       buf[0] = INST_BYTE0 (inst1);
@@ -2207,9 +3101,14 @@ md_apply_fix (fixS *   fixP,
 	 moves code around due to relaxing.  */
       if (fixP->fx_r_type == BFD_RELOC_64_PCREL)
 	fixP->fx_r_type = BFD_RELOC_MICROBLAZE_64_NONE;
+      else if (fixP->fx_r_type == BFD_RELOC_32)
+	fixP->fx_r_type = BFD_RELOC_MICROBLAZE_32_NONE;
+      else if(fixP->fx_r_type == BFD_RELOC_MICROBLAZE_EA64)
+        fixP->fx_r_type = BFD_RELOC_MICROBLAZE_EA64;
       else
 	fixP->fx_r_type = BFD_RELOC_NONE;
       fixP->fx_addsy = section_symbol (absolute_section);
+      fixP->fx_done = 0;
     }
   return;
 }
@@ -2247,12 +3146,30 @@ md_estimate_size_before_relax (fragS * fragP,
           as_bad (_("Absolute PC-relative value in relaxation code.  Assembler error....."));
           abort ();
         }
-      else if (S_GET_SEGMENT (fragP->fr_symbol) == segment_type &&
-               !S_IS_WEAK (fragP->fr_symbol))
+      else if (S_GET_SEGMENT (fragP->fr_symbol) == segment_type
+               && !S_IS_WEAK (fragP->fr_symbol))
         {
-          fragP->fr_subtype = DEFINED_PC_OFFSET;
-          /* Don't know now whether we need an imm instruction.  */
-          fragP->fr_var = INST_WORD_SIZE;
+           if (fragP->fr_opcode != NULL) {
+	     if(streq (fragP->fr_opcode, str_microblaze_64)) 
+             {
+               /* Used as an absolute value.  */
+              fragP->fr_subtype = DEFINED_64_PC_OFFSET;
+               /* Variable part does not change.  */
+              fragP->fr_var = INST_WORD_SIZE*2;
+	     }
+	   else
+	     {
+               fragP->fr_subtype = DEFINED_PC_OFFSET;
+               /* Don't know now whether we need an imm instruction.  */
+               fragP->fr_var = INST_WORD_SIZE;
+	     }
+	   }  
+	   else
+	     {
+               fragP->fr_subtype = DEFINED_PC_OFFSET;
+               /* Don't know now whether we need an imm instruction.  */
+               fragP->fr_var = INST_WORD_SIZE;
+	     }
         }
       else if (S_IS_DEFINED (fragP->fr_symbol)
 	       && (((S_GET_SEGMENT (fragP->fr_symbol))->flags & SEC_CODE) == 0))
@@ -2265,7 +3182,14 @@ md_estimate_size_before_relax (fragS * fragP,
         }
       else
 	{
-	  fragP->fr_subtype = UNDEFINED_PC_OFFSET;
+	  if (fragP->fr_opcode != NULL) {
+	    if (streq (fragP->fr_opcode, str_microblaze_64)) 
+              fragP->fr_subtype = DEFINED_64_PC_OFFSET;
+	    else
+	      fragP->fr_subtype = UNDEFINED_PC_OFFSET;
+	    }
+	  else
+	    fragP->fr_subtype = UNDEFINED_PC_OFFSET;
 	  fragP->fr_var = INST_WORD_SIZE*2;
 	}
       break;
@@ -2283,6 +3207,13 @@ md_estimate_size_before_relax (fragS * fragP,
 	      /* Variable part does not change.  */
 	      fragP->fr_var = INST_WORD_SIZE*2;
 	    }
+	  else if (streq (fragP->fr_opcode, str_microblaze_64))
+	    {
+              /* Used as an absolute value.  */
+              fragP->fr_subtype = DEFINED_64_OFFSET;
+              /* Variable part does not change.  */
+              fragP->fr_var = INST_WORD_SIZE;
+            }
 	  else if (streq (fragP->fr_opcode, str_microblaze_ro_anchor))
 	    {
               /* It is accessed using the small data read only anchor.  */
@@ -2356,6 +3287,8 @@ md_estimate_size_before_relax (fragS * fragP,
     case TLSLD_OFFSET:
     case TLSTPREL_OFFSET:
     case TLSDTPREL_OFFSET:
+    case DEFINED_64_OFFSET:
+    case DEFINED_64_PC_OFFSET:
       fragP->fr_var = INST_WORD_SIZE*2;
       break;
     case DEFINED_RO_SEGMENT:
@@ -2409,7 +3342,7 @@ md_pcrel_from_section (fixS * fixp, segT sec ATTRIBUTE_UNUSED)
   else
     {
       /* The case where we are going to resolve things... */
-      if (fixp->fx_r_type == BFD_RELOC_64_PCREL)
+      if (fixp->fx_r_type == BFD_RELOC_64_PCREL ||fixp->fx_r_type == BFD_RELOC_MICROBLAZE_64_PCREL)
         return  fixp->fx_where + fixp->fx_frag->fr_address + INST_WORD_SIZE;
       else
         return  fixp->fx_where + fixp->fx_frag->fr_address;
@@ -2430,6 +3363,7 @@ tc_gen_reloc (asection * section ATTRIBUTE_UNUSED, fixS * fixp)
   switch (fixp->fx_r_type)
     {
     case BFD_RELOC_NONE:
+    case BFD_RELOC_MICROBLAZE_32_NONE:
     case BFD_RELOC_MICROBLAZE_64_NONE:
     case BFD_RELOC_32:
     case BFD_RELOC_MICROBLAZE_32_LO:
@@ -2441,6 +3375,10 @@ tc_gen_reloc (asection * section ATTRIBUTE_UNUSED, fixS * fixp)
     case BFD_RELOC_MICROBLAZE_32_RWSDA:
     case BFD_RELOC_MICROBLAZE_32_SYM_OP_SYM:
     case BFD_RELOC_MICROBLAZE_64_GOTPC:
+    case BFD_RELOC_MICROBLAZE_64_GPC:
+    case BFD_RELOC_MICROBLAZE_EA64:
+    case BFD_RELOC_MICROBLAZE_64:
+    case BFD_RELOC_MICROBLAZE_64_PCREL:
     case BFD_RELOC_MICROBLAZE_64_GOT:
     case BFD_RELOC_MICROBLAZE_64_PLT:
     case BFD_RELOC_MICROBLAZE_64_GOTOFF:
@@ -2501,16 +3439,34 @@ tc_gen_reloc (asection * section ATTRIBUTE_UNUSED, fixS * fixp)
   return rel;
 }
 
+/* Called by TARGET_FORMAT.  */
+const char *
+microblaze_target_format (void)
+{
+
+  if (microblaze_arch_size == 64)
+    return "elf64-microblazeel";
+  else 
+      return target_big_endian ? "elf32-microblaze" : "elf32-microblazeel";
+}
+
+
 int
 md_parse_option (int c, const char * arg ATTRIBUTE_UNUSED)
 {
   switch (c)
     {
     case OPTION_EB:
+    case OPTION_BIG:
       target_big_endian = 1;
       break;
     case OPTION_EL:
+    case OPTION_LITTLE:
       target_big_endian = 0;
+      break;
+    case OPTION_M64:
+      //if (arg != NULL && strcmp (arg, "64") == 0)
+      microblaze_arch_size = 64;
       break;
     default:
       return 0;
@@ -2524,6 +3480,10 @@ md_show_usage (FILE * stream ATTRIBUTE_UNUSED)
   /*  fprintf(stream, _("\
       MicroBlaze options:\n\
       -noSmall         Data in the comm and data sections do not go into the small data section\n")); */
+  fprintf (stream, _(" MicroBlaze specific assembler options:\n"));
+  fprintf (stream, "  -%-23s%s\n", "mbig-endian", N_("assemble for a big endian cpu"));
+  fprintf (stream, "  -%-23s%s\n", "mlittle-endian", N_("assemble for a little endian cpu"));
+  fprintf (stream, "  -%-23s%s\n", "m64", N_("generate 64-bit elf"));
 }
 
 
@@ -2561,7 +3521,10 @@ cons_fix_new_microblaze (fragS * frag,
           r = BFD_RELOC_32;
           break;
         case 8:
-          r = BFD_RELOC_64;
+          if (microblaze_arch_size == 64)
+            r = BFD_RELOC_MICROBLAZE_EA64;
+          else
+            r = BFD_RELOC_64;
           break;
         default:
           as_bad (_("unsupported BFD relocation size %u"), size);

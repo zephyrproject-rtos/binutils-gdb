@@ -1364,6 +1364,7 @@ static etree_type *
 exp_assop (const char *dst,
 	   etree_type *src,
 	   enum node_tree_enum class,
+	   bool defsym,
 	   bool hidden)
 {
   etree_type *n;
@@ -1375,6 +1376,7 @@ exp_assop (const char *dst,
   n->assign.type.node_class = class;
   n->assign.src = src;
   n->assign.dst = dst;
+  n->assign.defsym = defsym;
   n->assign.hidden = hidden;
   return n;
 }
@@ -1384,7 +1386,7 @@ exp_assop (const char *dst,
 etree_type *
 exp_assign (const char *dst, etree_type *src, bool hidden)
 {
-  return exp_assop (dst, src, etree_assign, hidden);
+  return exp_assop (dst, src, etree_assign, false, hidden);
 }
 
 /* Handle --defsym command-line option.  */
@@ -1392,7 +1394,7 @@ exp_assign (const char *dst, etree_type *src, bool hidden)
 etree_type *
 exp_defsym (const char *dst, etree_type *src)
 {
-  return exp_assop (dst, src, etree_assign, false);
+  return exp_assop (dst, src, etree_assign, true, false);
 }
 
 /* Handle PROVIDE.  */
@@ -1400,7 +1402,7 @@ exp_defsym (const char *dst, etree_type *src)
 etree_type *
 exp_provide (const char *dst, etree_type *src, bool hidden)
 {
-  return exp_assop (dst, src, etree_provide, hidden);
+  return exp_assop (dst, src, etree_provide, false, hidden);
 }
 
 /* Handle ASSERT.  */

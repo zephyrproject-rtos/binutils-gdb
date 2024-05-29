@@ -1566,6 +1566,18 @@ reloc_overflow (struct bfd_link_info *info,
 	  break;
 	case bfd_link_hash_defined:
 	case bfd_link_hash_defweak:
+
+         if((strcmp(reloc_name,"R_MICROBLAZE_SRW32") == 0) &&  entry->type == bfd_link_hash_defined)
+	  {
+	  einfo (_(" relocation truncated to fit: don't enable small data pointer optimizations[mxl-gp-opt] if extern or multiple declarations used: "
+		 "%s against symbol `%T' defined in %A section in %B"),
+                 reloc_name, entry->root.string,
+                 entry->u.def.section,
+                 entry->u.def.section == bfd_abs_section_ptr
+                  ? info->output_bfd : entry->u.def.section->owner);
+	      break;
+	  }
+
 	  einfo (_(" relocation truncated to fit: "
 		   "%s against symbol `%pT' defined in %pA section in %pB"),
 		 reloc_name, entry->root.string,

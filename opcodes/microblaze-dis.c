@@ -33,6 +33,7 @@
 #define get_field_r1(buf, instr)   get_field (buf, instr, RA_MASK, RA_LOW)
 #define get_field_r2(buf, instr)   get_field (buf, instr, RB_MASK, RB_LOW)
 #define get_int_field_imm(instr)   ((instr & IMM_MASK) >> IMM_LOW)
+#define get_int_field_imml(instr)  ((instr & IMML_MASK) >> IMM_LOW)
 #define get_int_field_r1(instr)    ((instr & RA_MASK) >> RA_LOW)
 
 #define NUM_STRBUFS 3
@@ -73,11 +74,19 @@ get_field_imm (struct string_buf *buf, long instr)
 }
 
 static char *
-get_field_imm5 (struct string_buf *buf, long instr)
+get_field_imml (struct string_buf *buf, long instr)
+{
+  char *p = strbuf (buf);
+  sprintf (p, "%d", (int)((instr & IMML_MASK) >> IMM_LOW));
+  return p;
+}
+
+static char *
+get_field_imms (struct string_buf *buf, long instr)
 {
   char *p = strbuf (buf);
 
-  sprintf (p, "%d", (short)((instr & IMM5_MASK) >> IMM_LOW));
+  sprintf (p, "%d", (short)((instr & IMM6_MASK) >> IMM_LOW));
   return p;
 }
 
@@ -91,7 +100,19 @@ get_field_imm5_mbar (struct string_buf *buf, long instr)
 }
 
 static char *
-get_field_rfsl (struct string_buf *buf, long instr)
+get_field_immw (struct string_buf *buf, long instr)
+{
+  char *p = strbuf (buf);
+
+  if (instr & 0x00004000)
+    sprintf (p, "%d", (short)(((instr & IMM6_WIDTH_MASK) >> IMM_WIDTH_LOW))); /* bsefi */
+ else
+    sprintf (p, "%d", (short)(((instr & IMM6_WIDTH_MASK) >> IMM_WIDTH_LOW) - ((instr & IMM6_MASK) >> IMM_LOW) + 1)); /* bsifi */
+  return p;
+}
+
+static char *
+get_field_rfsl (struct string_buf *buf,long instr)
 {
   char *p = strbuf (buf);
 
@@ -109,9 +130,17 @@ get_field_imm15 (struct string_buf *buf, long instr)
   return p;
 }
 
+get_field_imm16 (struct string_buf *buf, long instr)
+{
+  char *p = strbuf (buf);
+
+  sprintf (p, "%d", (short)((instr & IMM16_MASK) >> IMM_LOW));
+  return p;
+}
+
 static char *
 get_field_special (struct string_buf *buf, long instr,
-		   const struct op_code_struct *op)
+		   struct op_code_struct *op)
 {
   char *p = strbuf (buf);
   char *spr;
@@ -184,11 +213,11 @@ get_field_special (struct string_buf *buf, long instr,
 static unsigned long
 read_insn_microblaze (bfd_vma memaddr,
 		      struct disassemble_info *info,
-		      const struct op_code_struct **opr)
+		      struct op_code_struct **opr)
 {
   unsigned char       ibytes[4];
   int                 status;
-  const struct op_code_struct *op;
+  struct op_code_struct *op;
   unsigned long inst;
 
   status = info->read_memory_func (memaddr, ibytes, 4, info);
@@ -224,7 +253,7 @@ print_insn_microblaze (bfd_vma memaddr, struct disassemble_info * info)
   fprintf_ftype print_func = info->fprintf_func;
   void *stream = info->stream;
   unsigned long inst, prev_inst;
-  const struct op_code_struct *op, *pop;
+  struct op_code_struct *op, *pop;
   int immval = 0;
   bool immfound = false;
   static bfd_vma prev_insn_addr = -1;	/* Init the prev insn addr.  */
@@ -296,9 +325,14 @@ print_insn_microblaze (bfd_vma memaddr, struct disassemble_info * info)
 		}
 	    }
 	  break;
-	case INST_TYPE_RD_R1_IMM5:
+	case INST_TYPE_RD_R1_IMML:
 	  print_func (stream, "\t%s, %s, %s", get_field_rd (&buf, inst),
-		      get_field_r1 (&buf, inst), get_field_imm5 (&buf, inst));
+		      get_field_r1 (&buf, inst), get_field_imm (&buf, inst));
+          /* TODO: Also print symbol */
+	  break;
+	case INST_TYPE_RD_R1_IMMS:
+	  print_func (stream, "\t%s, %s, %s", get_field_rd (&buf, inst),
+	           get_field_r1(&buf, inst), get_field_imms (&buf, inst));
 	  break;
 	case INST_TYPE_RD_RFSL:
 	  print_func (stream, "\t%s, %s", get_field_rd (&buf, inst),
@@ -405,6 +439,10 @@ print_insn_microblaze (bfd_vma memaddr, struct disassemble_info * info)
 	case INST_TYPE_RD_R2:
 	  print_func (stream, "\t%s, %s", get_field_rd (&buf, inst),
 		      get_field_r2 (&buf, inst));
+          break;
+        case INST_TYPE_IMML:
+	  print_func (stream, "\t%s", get_field_imml (&buf, inst));
+          /* TODO: Also print symbol */
 	  break;
 	case INST_TYPE_R2:
 	  print_func (stream, "\t%s", get_field_r2 (&buf, inst));
@@ -427,7 +465,14 @@ print_insn_microblaze (bfd_vma memaddr, struct disassemble_info * info)
 	  /* For mbar 16 or sleep insn.  */
 	case INST_TYPE_NONE:
 	  break;
-	  /* For tuqula instruction */
+	case INST_TYPE_RD_IMML:
+	  print_func (stream, "\t%s, %s", get_field_rd (&buf, inst), get_field_imm16 (&buf, inst));
+          break;
+        /* For bit field insns.  */
+	case INST_TYPE_RD_R1_IMMW_IMMS:
+          print_func (stream, "\t%s, %s, %s, %s", get_field_rd (&buf, inst),get_field_r1(&buf, inst),get_field_immw (&buf, inst), get_field_imms (&buf, inst));
+	     break;
+	/* For tuqula instruction */
 	case INST_TYPE_RD:
 	  print_func (stream, "\t%s", get_field_rd (&buf, inst));
 	  break;
@@ -452,7 +497,7 @@ get_insn_microblaze (long inst,
   		     enum microblaze_instr_type *insn_type,
   		     short *delay_slots)
 {
-  const struct op_code_struct *op;
+  struct op_code_struct *op;
   *isunsignedimm = false;
 
   /* Just a linear search of the table.  */
@@ -494,7 +539,7 @@ microblaze_get_target_address (long inst, bool immfound, int immval,
 			       bool *targetvalid,
 			       bool *unconditionalbranch)
 {
-  const struct op_code_struct *op;
+  struct op_code_struct *op;
   long targetaddr = 0;
 
   *unconditionalbranch = false;

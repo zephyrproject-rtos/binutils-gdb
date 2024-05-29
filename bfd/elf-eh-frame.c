@@ -1044,10 +1044,13 @@ _bfd_elf_parse_eh_frame (bfd *abfd, struct bfd_link_info *info,
   goto success;
 
  free_no_table:
+/* FIXME: Remove the microblaze specifics when relaxing gets fixed.  */
+if (bfd_get_arch(abfd) != bfd_arch_microblaze) {
   _bfd_error_handler
     /* xgettext:c-format */
     (_("error in %pB(%pA); no .eh_frame_hdr table will be created"),
      abfd, sec);
+}
   hdr_info->u.dwarf.table = false;
   free (sec_info);
  success:

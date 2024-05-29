@@ -425,6 +425,8 @@ ALL_64_EMULATION_SOURCES = \
 	eelf32ltsmipn32.c \
 	eelf32ltsmipn32_fbsd.c \
 	eelf32mipswindiss.c \
+        eelf64microblazeel.c \
+        eelf64microblaze.c \
 	eelf64_aix.c \
 	eelf64_ia64.c \
 	eelf64_ia64_fbsd.c \
@@ -924,6 +926,8 @@ $(ALL_EMULATION_SOURCES) $(ALL_64_EMULATION_SOURCES): $(GEN_DEPENDS)
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/eelf32ltsmipn32.Pc@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/eelf32ltsmipn32_fbsd.Pc@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/eelf32mipswindiss.Pc@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/eelf64microblazeel.Pc@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/eelf64microblaze.Pc@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/eelf64_aix.Pc@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/eelf64_ia64.Pc@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/eelf64_ia64_fbsd.Pc@am__quote@

@@ -14463,6 +14463,10 @@ is_8bit_abs_reloc (Filedata * filedata, unsigned int reloc_type)
       return reloc_type == 1;  /* R_Z80_8.  */
     default:
       return false;
+    case EM_MICROBLAZE:
+      return reloc_type == 33 /* R_MICROBLAZE_32_NONE.  */
+             || reloc_type == 0 /* R_MICROBLAZE_NONE.  */
+             || reloc_type == 9; /* R_MICROBLAZE_64_NONE.  */
     }
 }
 

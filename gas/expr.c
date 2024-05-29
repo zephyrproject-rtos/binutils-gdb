@@ -832,6 +832,15 @@ operand (expressionS *expressionP, enum expr_mode mode)
 	      break;
 	    }
 	}
+      if ((*input_line_pointer == 'U') || (*input_line_pointer == 'u'))
+      {
+      input_line_pointer--;
+
+      integer_constant ((NUMBERS_WITH_SUFFIX || flag_m68k_mri)
+                        ? 0 : 10,
+                        expressionP);
+      break;
+      }
       c = *input_line_pointer;
       switch (c)
 	{
