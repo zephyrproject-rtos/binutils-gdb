@@ -368,11 +368,17 @@ or1k_apply_fix (struct fix *f, valueT *t, segT s)
     case BFD_RELOC_OR1K_TLS_LDO_HI16:
     case BFD_RELOC_OR1K_TLS_LDO_LO16:
     case BFD_RELOC_OR1K_TLS_IE_HI16:
+    case BFD_RELOC_OR1K_TLS_IE_AHI16:
     case BFD_RELOC_OR1K_TLS_IE_LO16:
     case BFD_RELOC_OR1K_TLS_IE_PG21:
     case BFD_RELOC_OR1K_TLS_IE_LO13:
     case BFD_RELOC_OR1K_TLS_LE_HI16:
+    case BFD_RELOC_OR1K_TLS_LE_AHI16:
     case BFD_RELOC_OR1K_TLS_LE_LO16:
+    case BFD_RELOC_OR1K_TLS_LE_SLO16:
+    case BFD_RELOC_OR1K_TLS_TPOFF:
+    case BFD_RELOC_OR1K_TLS_DTPOFF:
+    case BFD_RELOC_OR1K_TLS_DTPMOD:
       S_SET_THREAD_LOCAL (f->fx_addsy);
       break;
     default:
