@@ -7848,14 +7848,16 @@ rewrite_elf_program_header (bfd *ibfd, bfd *obfd, bfd_vma maxpagesize)
 		      /* If the first section in a segment does not start at
 			 the beginning of the segment, then something is
 			 wrong.  */
-		      if (align_power (map->p_paddr
-				       + (map->includes_filehdr
-					  ? iehdr->e_ehsize : 0)
-				       + (map->includes_phdrs
-					  ? iehdr->e_phnum * iehdr->e_phentsize
-					  : 0),
-				       output_section->alignment_power * opb)
-			  != output_section->lma * opb)
+		      bfd_vma lma = (map->p_paddr
+				     + (map->includes_filehdr
+					? iehdr->e_ehsize : 0)
+				     + (map->includes_phdrs
+					? iehdr->e_phnum * iehdr->e_phentsize
+					: 0));
+		      if (align_power(lma,
+				      output_section->alignment_power * opb)
+			  != output_section->lma * opb &&
+			  lma != output_section->lma * opb)
 			goto sorry;
 		    }
 		  else
