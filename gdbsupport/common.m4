@@ -138,7 +138,7 @@ AC_CHECK_HEADERS([ \
     #   define _WIN32_WINNT 0x0501
     #  endif
     # else
-    #  define _WIN32_WINNT 0x0501
+    #  define _WIN32_WINNT 0x0600
     # endif
     #endif	/* __MINGW32__ || __CYGWIN__ */
     #include <thread>
