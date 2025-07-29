@@ -177,9 +177,9 @@ static reloc_howto_type microblaze_elf_howto_raw[] =
    /* This reloc does nothing.	Used for relaxation.  */
    HOWTO (R_MICROBLAZE_32_NONE,	/* Type.  */
 	0,			/* Rightshift.  */
-	2,			/* Size (0 = byte, 1 = short, 2 = long).  */
+	4,			/* Size */
 	32,			/* Bitsize.  */
-	true,			/* PC_relative.  */
+	false,			/* PC_relative.  */
 	0,			/* Bitpos.  */
 	complain_overflow_bitfield, /* Complain on overflow.  */
 	NULL,			/* Special Function.  */
