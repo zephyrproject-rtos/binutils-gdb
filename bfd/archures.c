@@ -454,6 +454,7 @@ DESCRIPTION
 .#define bfd_mach_rx		0x75
 .#define bfd_mach_rx_v2		0x76
 .#define bfd_mach_rx_v3		0x77
+.#define bfd_mach_rx_v3_dfpu  0x78
 .  bfd_arch_s390,      {* IBM s390.  *}
 .#define bfd_mach_s390_31	31
 .#define bfd_mach_s390_64	64

@@ -1,5 +1,5 @@
 /* Disassembler code for Renesas RX.
-   Copyright (C) 2008-2024 Free Software Foundation, Inc.
+   Copyright (C) 2008-2025 Free Software Foundation, Inc.
    Contributed by Red Hat.
    Written by DJ Delorie.
 
@@ -212,8 +212,8 @@ get_size_name (unsigned int size)
 }
 
 
-int
-print_insn_rx (bfd_vma addr, disassemble_info * dis)
+static int
+print_insn_rx_internal (bfd_vma addr, disassemble_info * dis, unsigned long machine)
 {
   int rv;
   RX_Data rx_data;
@@ -231,7 +231,7 @@ print_insn_rx (bfd_vma addr, disassemble_info * dis)
       return -1;
     }
 
-  rv = rx_decode_opcode (addr, &opcode, rx_get_byte, &rx_data);
+  rv = rx_decode_opcode (addr, &opcode, rx_get_byte, &rx_data, machine);
 
   dis->bytes_per_line = 10;
 
@@ -250,12 +250,12 @@ print_insn_rx (bfd_vma addr, disassemble_info * dis)
 
       PR (PS, ".byte ");
       rx_data.dis->read_memory_func (rx_data.pc - rv, buf, rv, rx_data.dis);
-      
+
       for (i = 0 ; i < rv; i++)
 	PR (PS, "0x%02x ", buf[i]);
       return rv;
     }
-      
+
   for (s = opcode.syntax; *s; s++)
     {
       if (*s != '%')
@@ -303,13 +303,12 @@ print_insn_rx (bfd_vma addr, disassemble_info * dis)
 		{
 		  int imm = opcode.op[2].addend;
 		  int slsb, dlsb, width;
-
 		  dlsb = (imm >> 5) & 0x1f;
 		  slsb = (imm & 0x1f);
-		  slsb = (slsb >= 0x10?(slsb ^ 0x1f) + 1:slsb);
 		  slsb = dlsb - slsb;
-		  slsb = (slsb < 0?-slsb:slsb);
+		  slsb = (slsb < 0?32+slsb:slsb);
 		  width = ((imm >> 10) & 0x1f) - dlsb;
+		  width = (width < 0?32+width:width);
 		  PR (PS, "#%d, #%d, #%d, %s, %s",
 		      slsb, dlsb, width,
 		      get_register_name (opcode.op[1].reg),
@@ -384,4 +383,30 @@ print_insn_rx (bfd_vma addr, disassemble_info * dis)
     }
 
   return rv;
+}
+
+/* this info is available also in info.bfd_arch_info->mach,
+unfortunately we can't modify that when we overwrite the machine using -rx-force-isa=...  */
+int
+print_insn_rx (bfd_vma addr, disassemble_info * dis)
+{
+	return print_insn_rx_internal(addr, dis, bfd_mach_rx);
+}
+
+int
+print_insn_rxv2 (bfd_vma addr, disassemble_info * dis)
+{
+	return print_insn_rx_internal(addr, dis, bfd_mach_rx_v2);
+}
+
+int
+print_insn_rxv3 (bfd_vma addr, disassemble_info * dis)
+{
+	return print_insn_rx_internal(addr, dis, bfd_mach_rx_v3);
+}
+
+int
+print_insn_rxv3_dfpu (bfd_vma addr, disassemble_info * dis)
+{
+	return print_insn_rx_internal(addr, dis, bfd_mach_rx_v3_dfpu);
 }
