@@ -39,6 +39,8 @@ ee_overrides (void)
   /* This breaks stack unwinding for exceptions because it leaves
      MC_PUSHED_PC tags in the unwound stack frames.  */
   ee_actions[SIM_ERR_CORRUPT_STACK] = SIM_ERRACTION_IGNORE;
+  /* Address 0 does actually contain a valid word of RAM.  */
+  ee_actions[SIM_ERR_NULL_POINTER_DEREFERENCE] = SIM_ERRACTION_IGNORE;
 }
 
 void

@@ -36,6 +36,7 @@ extern int rx_big_endian;
 typedef struct
 {
   SI r[16];
+  DI dr[16];
 
   SI r_psw;
   SI r_pc;
@@ -51,7 +52,7 @@ typedef struct
   SI r_isp;
   SI r_fintv;
   SI r_intb;
-  SI r__reserved_cr_13;
+  SI r_extb;
   SI r__reserved_cr_14;
   SI r__reserved_cr_15;
 
@@ -75,7 +76,16 @@ typedef struct
 
   SI r_temp;
 
-  DI r_acc;
+  /*DI r_acc;*/
+  DI r_acc0[2];
+  DI r_acc1[2];
+
+  SI r_dpsw;
+  SI r_dcmr;
+  SI r_decnt;
+  SI r_depc;
+
+  SI bit_li : 1;
 
 #ifdef CYCLE_ACCURATE
   /* If set, RTS/RTSD take 2 fewer cycles.  */
@@ -95,22 +105,35 @@ typedef struct
 #define M2M_BOTH	0x03
 
 #define sp	0
-#define psw	16
-#define	pc	17
-#define usp	18
-#define fpsw	19
+#define dr0 16
+#define psw 32
+#define pc  33
+#define usp 34
+#define fpsw  35
 
-#define bpsw	24
-#define bpc	25
-#define isp	26
-#define fintv	27
-#define intb	28
+#define bpsw  40
+#define bpc 41
+#define isp 42
+#define fintv 43
+#define intb  44
+#define extb  45
 
-#define r_temp_idx 48
-#define acc64	49
-#define acchi	50
-#define accmi	51
-#define acclo	52
+#define r_temp_idx 64
+#define acc0  65
+#define acc1  66
+#define acc0hi  67
+#define acc0mi  68
+#define acc0lo  69
+#define acc1hi  70
+#define acc1mi  71
+#define acc1lo  72
+
+#define dpsw 73
+#define dcmr 74
+#define decnt 75
+#define depc 76
+
+#define libit 78
 
 extern regs_type regs;
 
@@ -147,13 +170,61 @@ extern regs_type regs;
 #define FPSWBITS_FU	0x20000000
 #define FPSWBITS_FX	0x40000000
 #define FPSWBITS_FSUM	0x80000000
-#define FPSWBITS_FMASK	0x7c000000
+#define FPSWBITS_FMASK  0x3c000000
 #define FPSWBITS_CLEAR	0xffffff03 /* masked at start of any FP opcode */
 
 #define FPRM_NEAREST	0
 #define FPRM_ZERO	1
 #define FPRM_PINF	2
 #define FPRM_NINF	3
+
+/*
+ * Double-Precision Floating-Point Status Word (DPSW)
+ */
+#define DPSWBITS_DRM 0x00000003 /* Double-precision floating-point rounding-mode setting bits */
+#define DPSWBITS_DCV 0x00000004 /* Invalid operation cause flag */
+#define DPSWBITS_DCO 0x00000008 /* Overlow cause flag */
+#define DPSWBITS_DCZ 0x00000010 /* Division-by-zero cause flag */
+#define DPSWBITS_DCU 0x00000020 /* Underflow cause flag */
+#define DPSWBITS_DCX 0x00000040 /* Inexact cause flag */
+#define DPSWBITS_DCE 0x00000080 /* Unimplemented processing flag */
+#define DPSWBITS_CMASK  0x000000fc /* all the above */
+#define DPSWBITS_DDN 0x00000100 /* 0 flush bit of denormalized number */
+#define DPSWBITS_B9  0x00000200 /* Reserved */
+#define DPSWBITS_DEV 0x00000400 /* Invalid operation exception enable bit */
+#define DPSWBITS_DEO 0x00000800 /* Overflow exception enable bit */
+#define DPSWBITS_DEZ 0x00001000 /* Division-by-zero exception enable bit */
+#define DPSWBITS_DEU 0x00002000 /* Underflow exception enable bit */
+#define DPSWBITS_DEX 0x00004000 /* Inexact exception enable bit */
+#define DPSWBITS_B15 0x00008000 /* Reserved */
+#define DPSWBITS_B16 0x00010000 /* Reserved */
+#define DPSWBITS_B17 0x00020000 /* Reserved */
+#define DPSWBITS_B18 0x00040000 /* Reserved */
+#define DPSWBITS_B19 0x00080000 /* Reserved */
+#define DPSWBITS_B20 0x00100000 /* Reserved */
+#define DPSWBITS_B21 0x00200000 /* Reserved */
+#define DPSWBITS_B22 0x00400000 /* Reserved */
+#define DPSWBITS_B23 0x00800000 /* Reserved */
+#define DPSWBITS_B24 0x01000000 /* Reserved */
+#define DPSWBITS_B25 0x02000000 /* Reserved */
+#define DPSWBITS_DFV 0x04000000 /* Invalid operation flag */
+#define DPSWBITS_DFO 0x08000000 /* Overflow flag */
+#define DPSWBITS_DFZ 0x10000000 /* Division-by-zero flag */
+#define DPSWBITS_DFU 0x20000000 /* Underflow flag */
+#define DPSWBITS_DFX 0x40000000 /* Inexact flag */
+#define DPSWBITS_DFS 0x80000000 /* Double-precision floating point error summary flag */
+
+#define DPSWBITS_FMASK  0x3c000000 /*DFU, DFZ, DFO, DFV*/
+#define DPSWBITS_CLEAR  0xffffff03
+
+#define DPSW_CESH 8
+#define DPSW_EFSH 16
+#define DPSW_CFSH 24
+
+#define DPRM_NEAREST  0
+#define DPRM_ZERO 1
+#define DPRM_PINF 2
+#define DPRM_NINF 3
 
 extern char *reg_names[];
 
@@ -170,9 +241,11 @@ void init_regs (void);
 void stack_heap_stats (void);
 void set_pointer_width (int bytes);
 unsigned int get_reg (int id);
-unsigned long long get_reg64 (int id);
+unsigned long long get_reg_double (int id);
+unsigned long long * get_reg72 (int id);
 void put_reg (int id, unsigned int value);
-void put_reg64 (int id, unsigned long long value);
+void put_reg72 (int id, unsigned long long * value);
+void put_reg_double (int id, unsigned long long value);
 
 void set_flags (int mask, int newbits);
 void set_oszc (long long value, int bytes, int c);
@@ -235,11 +308,11 @@ extern unsigned int heaptop;
 extern unsigned int heapbottom;
 
 extern int decode_opcode (void);
-extern void reset_decoder (void);
+extern void reset_decoder (SI tpc);
 extern void reset_pipeline_stats (void);
 extern void halt_pipeline_stats (void);
 extern void pipeline_stats (void);
 
-extern void trace_register_changes (void);
+extern void trace_register_changes ();
 extern void generate_access_exception (void);
 extern jmp_buf decode_jmp_buf;

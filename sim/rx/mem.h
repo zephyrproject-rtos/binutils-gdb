@@ -46,6 +46,7 @@ unsigned long mem_usage_cycles (void);
 #define NONPAGE_MASK (~(PAGE_SIZE-1))
 
 unsigned char *rx_mem_ptr (unsigned long address, enum mem_ptr_action action);
+unsigned char *rx_context_mem_ptr (unsigned long address, enum mem_ptr_action action);
 #ifdef RXC_never
 RX_Opcode_Decoded **rx_mem_decode_cache (unsigned long address);
 #endif
@@ -54,6 +55,10 @@ void mem_put_qi (int address, unsigned char value);
 void mem_put_hi (int address, unsigned short value);
 void mem_put_psi (int address, unsigned long value);
 void mem_put_si (int address, unsigned long value);
+void mem_put_di (int address, unsigned long long value);
+
+void mem_put_context_si (unsigned long location, unsigned long offset, unsigned long value);
+void mem_put_context_acc (unsigned long location, unsigned long offset, unsigned long long *value);
 
 void mem_put_blk (int address, void *bufptr_void, int nbytes);
 
@@ -63,6 +68,10 @@ unsigned char mem_get_qi (int address);
 unsigned short mem_get_hi (int address);
 unsigned long mem_get_psi (int address);
 unsigned long mem_get_si (int address);
+unsigned long long mem_get_di (int address);
+
+unsigned long mem_get_context_si (unsigned long location, unsigned long offset);
+unsigned long long * mem_get_context_acc (unsigned long location, unsigned long offset);
 
 void mem_get_blk (int address, void *bufptr_void, int nbytes);
 

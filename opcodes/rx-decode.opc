@@ -33,8 +33,8 @@
 typedef struct
 {
   RX_Opcode_Decoded * rx;
-  int (* getbyte)(void *);
-  void * ptr;
+  int (* getbyte)(RX_Data *);
+  RX_Data * ptr;
   unsigned char * op;
 } LocalData;
 
@@ -92,9 +92,9 @@ static int _ld[2] =
 			rx->op[n].size = s )
 
 /* This is for the BWL and BW bitfields.  */
-static int SCALE[] = { 1, 2, 4, 0 };
+static int SCALE[4] = { 1, 2, 4, 0 };
 /* This is for the prefix size enum.  */
-static int PSCALE[] = { 4, 1, 1, 1, 2, 2, 2, 3, 4, 8 };
+static int PSCALE[RX_MAX_SIZE] = { 4, 1, 1, 1, 2, 2, 2, 3, 4, 4, 0 };
 
 #define GET_SCALE(_indx)  ((unsigned)(_indx) < ARRAY_SIZE (SCALE) ? SCALE[(_indx)] : 0)
 #define GET_PSCALE(_indx) ((unsigned)(_indx) < ARRAY_SIZE (PSCALE) ? PSCALE[(_indx)] : 0)
@@ -287,8 +287,9 @@ rx_disp (int n, int type, int reg, unsigned int size, LocalData * ld)
 int
 rx_decode_opcode (unsigned long pc AU,
 		  RX_Opcode_Decoded * rx,
-		  int (* getbyte)(void *),
-		  void * ptr)
+		  int (* getbyte)(RX_Data *),
+		  RX_Data * ptr,
+		  unsigned long machine)
 {
   LocalData lds, * ld = &lds;
   unsigned char op[20] = {0};
@@ -1023,20 +1024,59 @@ rx_decode_opcode (unsigned long pc AU,
   ID(mvtipl); SC(immm);
 
 /** 0111 1110 111 crdst			popc	%0 */
+if ((crdst == 1) || (crdst > 0xD || (crdst > 0xC && machine == bfd_mach_rx)))
+{
+  /* fake a non existent control reg in order not to mess up decoding */
+  ID(mov); OP(1, RX_Operand_Postinc, 0, 0); DR(40);
+}
+else
+{
   ID(mov); OP(1, RX_Operand_Postinc, 0, 0); DR(crdst + 16);
+}
 
 /** 0111 1110 110 crsrc			pushc	%1 */
+ if (crsrc > 0xD || (crsrc > 0xC && machine == bfd_mach_rx))
+ {
+  /* fake a non existent control reg in order not to mess up decoding */
+  ID(mov); OP(0, RX_Operand_Predec, 0, 0); SR(40);
+ }
+ else
+ {
   ID(mov); OP(0, RX_Operand_Predec, 0, 0); SR(crsrc + 16);
+ }
 
-/** 1111 1101 0111 im11 000crdst	mvtc	#%1, %0 */
-  ID(mov); SC(IMMex(im)); DR(crdst + 16);
+/** 1111 1101 0111 im11 000c rdst	mvtc	#%1, %0 */
+if (((c*16+rdst) == 1) || ((c*16+rdst) > 0xD || ((c*16+rdst) > 0xC && machine == bfd_mach_rx)))
+{
+  /* fake a non existent control reg in order not to mess up decoding */
+  ID(mov); SC(IMMex(im)); DR(40);
+}
+else
+{
+  ID(mov); SC(IMMex(im)); DR(c*16+rdst + 16);
+}
 
 /** 1111 1101 0110 100c rsrc rdst	mvtc	%1, %0 */
+if (((c*16+rdst) == 1) || ((c*16+rdst) > 0xD || ((c*16+rdst) > 0xC && machine == bfd_mach_rx)))
+{
+  /* fake a non existent control reg in order not to mess up decoding */
+  ID(mov); SR(rsrc); DR(40);
+}
+else
+{
   ID(mov); SR(rsrc); DR(c*16+rdst + 16);
+}
 
 /** 1111 1101 0110 101s rsrc rdst	mvfc	%1, %0 */
+if ((s*16+rsrc) > 0xD || ((s*16+rsrc) > 0xC && machine == bfd_mach_rx))
+{
+  /* fake a non existent control reg in order not to mess up decoding */
+  ID(mov); SR(40); DR(rdst);
+}
+else
+{
   ID(mov); SR((s*16+rsrc) + 16); DR(rdst);
-
+}
 /*----------------------------------------------------------------------*/
 /* INTERRUPTS								*/
 
@@ -1228,8 +1268,8 @@ rx_decode_opcode (unsigned long pc AU,
 /** 0111 0101 1001 0000 0001 1011	mvfdr */
   ID(mvfdr); F_____;
 
-/** 1111 1101 0111 0111 1000 rdst rsrc 0100	mvtdc	%1, %0 */
-  ID(mvtdc); DCR(rdst); SR(rsrc); F_____;
+/** 1111 1101 0111 0111 1000 rsrc rdst 0100	mvtdc	%1, %0 */
+  ID(mvtdc); SR(rsrc); DCR(rdst); F_____;
 
 /** 0111 0110 1001 0000 rsrc 1100 rdst 0001	dabs	%1, %0 */
   ID(dabs); DDR(rdst); SDR(rsrc); F_____;

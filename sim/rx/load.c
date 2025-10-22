@@ -114,7 +114,7 @@ rx_load (bfd *prog, host_callback *callback)
       fprintf (stderr, "Failed to read program headers\n");
       return;
     }
-  
+
   for (i = 0; i < num_headers; i++)
     {
       Elf_Internal_Phdr * p = phdrs + i;
@@ -146,7 +146,7 @@ rx_load (bfd *prog, host_callback *callback)
 	  fprintf (stderr, "Failed to allocate buffer to hold program segment\n");
 	  continue;
 	}
-      
+
       offset = p->p_offset;
       if (bfd_seek (prog, offset, SEEK_SET) != 0)
 	{
@@ -177,7 +177,7 @@ rx_load (bfd *prog, host_callback *callback)
       heaptop = heapbottom = 0;
     }
 
-  reset_decoder ();
+  reset_decoder (regs.r_pc);
 
   if (verbose > 1)
     fprintf (stderr, "[start pc=%08x %s]\n",

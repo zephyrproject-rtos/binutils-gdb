@@ -46,6 +46,9 @@ static int disassemble = 0;
 
 #define ACT(E,A) (OPT_ACT + SIM_ERR_##E * SIM_ERRACTION_NUM_ACTIONS + SIM_ERRACTION_##A)
 
+extern int tfu;
+extern unsigned ccrx_sys_flags;
+
 static struct option sim_options[] =
 {
   { "end-sim-args", 0, NULL, 'E' },
@@ -61,6 +64,8 @@ static struct option sim_options[] =
   { "exit-corrupt-stack", 0, NULL, ACT(CORRUPT_STACK,EXIT) },
   { "warn-corrupt-stack", 0, NULL, ACT(CORRUPT_STACK,WARN) },
   { "ignore-corrupt-stack", 0, NULL, ACT(CORRUPT_STACK,IGNORE) },
+  { "tfu", 0, NULL, 'T'},
+  { "ccrx-sys-flags", 0, NULL, 'C'},
   { 0, 0, 0, 0 }
 };
 
@@ -101,6 +106,15 @@ main (int argc, char **argv)
 	   words on the command line that look like arguments will be passed
 	   on to the program being simulated.  */
 	break;
+
+	  if (o == 'T')
+	  {
+	  	tfu = 1;
+	  }
+	  if (o == 'C')
+	  {
+	    ccrx_sys_flags = 1;
+	  }
 
       if (o >= OPT_ACT)
 	{

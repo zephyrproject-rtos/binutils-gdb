@@ -31,6 +31,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include "opcode/rx.h"
 #include "mem.h"
@@ -47,12 +48,15 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #define L2_LEN  (1 << L2_BITS)
 #define OFF_LEN (1 << OFF_BITS)
 
+/* context memory: 256 locations containing: r1-r15, USP, FPSW, ACC0, ACC1  */
+static unsigned char context_memory[256][4*15+4+4+2*12];
+
 static unsigned char **pt[L1_LEN];
 static unsigned char **ptr[L1_LEN];
 static RX_Opcode_Decoded ***ptdc[L1_LEN];
 
 /* [ get=0/put=1 ][ byte size ] */
-static unsigned int mem_counters[2][5];
+static unsigned int mem_counters[2][13];
 
 #define COUNT(isput,bytes)                                      \
   if (verbose && enable_counting) mem_counters[isput][bytes]++
@@ -73,6 +77,26 @@ init_mem (void)
   memset (pt, 0, sizeof (pt));
   memset (ptr, 0, sizeof (ptr));
   memset (mem_counters, 0, sizeof (mem_counters));
+}
+
+unsigned char
+rx_context_mem_read_byte (unsigned long location, unsigned long offset)
+{
+	if (trace)
+	{
+		printf (" context_memory(%d)[%d] => 0x%02X\n", location, offset, context_memory[location][offset]);
+	}
+	return context_memory[location][offset];
+}
+
+unsigned char
+rx_context_mem_write_byte (unsigned long location, unsigned long offset, unsigned char value)
+{
+	if (trace)
+	{
+		printf (" context_memory(%d)[%d] <= 0x%02X\n", location, offset, value);
+	}
+	context_memory[location][offset] = value;
 }
 
 unsigned char *
@@ -414,9 +438,154 @@ mem_put_psi (int address, unsigned long value)
   COUNT (1, 3);
 }
 
+unsigned int converttoq131(float n) {
+  unsigned result = (n < 0)? (1 << 31) : 0;
+  float index = 1;
+  if (n < 0) n = -n;
+  for (int i = 1; i <= 31; ++i) {
+    index /= 2;
+    if (n >= index) {
+      result |= (1 << 31 - i);
+      n -= index;
+    }
+  }
+  return result;
+}
+
+float convertfromq131(unsigned int n) {
+  float result = 0;
+  float index = 1;
+  for (int i = 1; i <= 31; ++i) {
+    index /= 2;
+    result += ((n >> (31 - i)) & 1) * index;
+  }
+  result *= (n >> 31) ? -1 : 1;
+  return result;
+}
+
+typedef union {
+  unsigned long l;
+  float d;
+} U_d_ll;
+
+int tfu;
+
 void
 mem_put_si (int address, unsigned long value)
 {
+  U_d_ll da, db;
+
+  if (tfu)
+  {
+    int newAddr;
+    unsigned long value2;
+    switch (address)
+    {
+      case 0x00081410:
+        break;
+      case 0x00081414:
+        da.l = value;
+        newAddr = 0x00081410;
+        da.d = cos (da.d);
+
+        if (rx_big_endian)
+        {
+          mem_put_byte (newAddr + 0, (da.l >> 24) & 0xff);
+          mem_put_byte (newAddr + 1, (da.l >> 16) & 0xff);
+          mem_put_byte (newAddr + 2, (da.l >> 8) & 0xff);
+          mem_put_byte (newAddr + 3, da.l & 0xff);
+        }
+        else
+        {
+          mem_put_byte (newAddr + 0, da.l & 0xff);
+          mem_put_byte (newAddr + 1, (da.l >> 8) & 0xff);
+          mem_put_byte (newAddr + 2, (da.l >> 16) & 0xff);
+          mem_put_byte (newAddr + 3, (da.l >> 24) & 0xff);
+        }
+        da.l = value;
+        da.d = sin (da.d);
+        value = da.l;
+        break;
+      case 0x00081424:
+        da.d = convertfromq131(value);
+        da.d = cos (da.d);
+        newAddr = 0x00081420;
+        da.l = converttoq131(da.d);
+        if (rx_big_endian)
+        {
+          mem_put_byte (newAddr + 0, (da.l >> 24) & 0xff);
+          mem_put_byte (newAddr + 1, (da.l >> 16) & 0xff);
+          mem_put_byte (newAddr + 2, (da.l >> 8) & 0xff);
+          mem_put_byte (newAddr + 3, da.l & 0xff);
+        }
+        else
+        {
+          mem_put_byte (newAddr + 0, da.l & 0xff);
+          mem_put_byte (newAddr + 1, (da.l >> 8) & 0xff);
+          mem_put_byte (newAddr + 2, (da.l >> 16) & 0xff);
+          mem_put_byte (newAddr + 3, (da.l >> 24) & 0xff);
+        }
+        da.d = convertfromq131(value);
+        da.d = sin (da.d);
+        value = converttoq131(da.d);
+        break;
+      case 0x00081420:
+        break;
+      case 0x00081418:
+        break;
+      case 0x0008141c:
+        da.l = value;
+        newAddr = 0x00081418;
+        value2 = db.l = mem_get_si (newAddr);
+        db.d = hypot (db.d, da.d) / 0.607253f;
+
+        if (rx_big_endian)
+        {
+          mem_put_byte (newAddr + 0, (db.l >> 24) & 0xff);
+          mem_put_byte (newAddr + 1, (db.l >> 16) & 0xff);
+          mem_put_byte (newAddr + 2, (db.l >> 8) & 0xff);
+          mem_put_byte (newAddr + 3, db.l & 0xff);
+        }
+        else
+        {
+          mem_put_byte (newAddr + 0, db.l & 0xff);
+          mem_put_byte (newAddr + 1, (db.l >> 8) & 0xff);
+          mem_put_byte (newAddr + 2, (db.l >> 16) & 0xff);
+          mem_put_byte (newAddr + 3, (db.l >> 24) & 0xff);
+        }
+        db.l = value2;
+        da.d = atan2 (da.d, db.d);
+        value = da.l;
+        break;
+      case 0x00081428:
+        break;
+      case 0x0008142c:
+        da.d = convertfromq131(value);
+        newAddr = 0x00081428;
+        value2 = mem_get_si (newAddr);
+        db.d = convertfromq131(value2);
+        db.d = hypot (db.d, da.d) / 0.607253f;
+        db.l = converttoq131(db.d);
+        if (rx_big_endian)
+        {
+          mem_put_byte (newAddr + 0, (db.l >> 24) & 0xff);
+          mem_put_byte (newAddr + 1, (db.l >> 16) & 0xff);
+          mem_put_byte (newAddr + 2, (db.l >> 8) & 0xff);
+          mem_put_byte (newAddr + 3, db.l & 0xff);
+        }
+        else
+        {
+          mem_put_byte (newAddr + 0, db.l & 0xff);
+          mem_put_byte (newAddr + 1, (db.l >> 8) & 0xff);
+          mem_put_byte (newAddr + 2, (db.l >> 16) & 0xff);
+          mem_put_byte (newAddr + 3, (db.l >> 24) & 0xff);
+        }
+	      db.d = convertfromq131(value2);
+        da.d = atan2 (da.d, db.d);
+        value = converttoq131(da.d);
+        break;
+    }
+  }
   S ("<=");
   if (rx_big_endian)
     {
@@ -434,6 +603,94 @@ mem_put_si (int address, unsigned long value)
     }
   E ();
   COUNT (1, 4);
+}
+
+void
+mem_put_di (int address, unsigned long long value)
+{
+  S ("<=");
+  if (rx_big_endian)
+    {
+      mem_put_byte (address + 0, (value >> 56) & 0xff);
+      mem_put_byte (address + 1, (value >> 48) & 0xff);
+      mem_put_byte (address + 2, (value >> 40) & 0xff);
+      mem_put_byte (address + 3, (value >> 32) & 0xff);
+      mem_put_byte (address + 4, (value >> 24) & 0xff);
+      mem_put_byte (address + 5, (value >> 16) & 0xff);
+      mem_put_byte (address + 6, (value >> 8) & 0xff);
+      mem_put_byte (address + 7, value & 0xff);
+    }
+  else
+    {
+      mem_put_byte (address + 0, value & 0xff);
+      mem_put_byte (address + 1, (value >> 8) & 0xff);
+      mem_put_byte (address + 2, (value >> 16) & 0xff);
+      mem_put_byte (address + 3, (value >> 24) & 0xff);
+      mem_put_byte (address + 4, (value >> 32) & 0xff);
+      mem_put_byte (address + 5, (value >> 40) & 0xff);
+      mem_put_byte (address + 6, (value >> 48) & 0xff);
+      mem_put_byte (address + 7, (value >> 56) & 0xff);
+    }
+  E ();
+  COUNT (1, 8);
+}
+
+void
+mem_put_context_si (unsigned long location, unsigned long offset, unsigned long value)
+{
+  if (rx_big_endian)
+    {
+      rx_context_mem_write_byte (location, offset, (value >> 24) & 0xff);
+      rx_context_mem_write_byte (location, offset + 1, (value >> 16) & 0xff);
+      rx_context_mem_write_byte (location, offset + 2, (value >> 8) & 0xff);
+      rx_context_mem_write_byte (location, offset + 3, value & 0xff);
+    }
+  else
+    {
+      rx_context_mem_write_byte (location, offset, value & 0xff);
+      rx_context_mem_write_byte (location, offset + 1, (value >> 8) & 0xff);
+      rx_context_mem_write_byte (location, offset + 2, (value >> 16) & 0xff);
+      rx_context_mem_write_byte (location, offset + 3, (value >> 24) & 0xff);
+    }
+  E ();
+  COUNT (1, 4);
+}
+
+void
+mem_put_context_acc (unsigned long location, unsigned long offset, unsigned long long *value)
+{
+  if (rx_big_endian)
+    {
+      rx_context_mem_write_byte (location, offset, (value[1] >> 24) & 0xff);
+      rx_context_mem_write_byte (location, offset + 1, (value[1] >> 16) & 0xff);
+      rx_context_mem_write_byte (location, offset + 2, (value[1] >> 8) & 0xff);
+      rx_context_mem_write_byte (location, offset + 3, value[1] & 0xff);
+      rx_context_mem_write_byte (location, offset + 4, (value[0] >> 56) & 0xff);
+      rx_context_mem_write_byte (location, offset + 5, (value[0] >> 48) & 0xff);
+      rx_context_mem_write_byte (location, offset + 6, (value[0] >> 40) & 0xff);
+      rx_context_mem_write_byte (location, offset + 7, (value[0] >> 32) & 0xff);
+      rx_context_mem_write_byte (location, offset + 8, (value[0] >> 24) & 0xff);
+      rx_context_mem_write_byte (location, offset + 9, (value[0] >> 16) & 0xff);
+      rx_context_mem_write_byte (location, offset + 10, (value[0] >> 8) & 0xff);
+      rx_context_mem_write_byte (location, offset + 11, value[0] & 0xff);
+    }
+  else
+    {
+      rx_context_mem_write_byte (location, offset, value[0] & 0xff);
+      rx_context_mem_write_byte (location, offset + 1, (value[0] >> 8) & 0xff);
+      rx_context_mem_write_byte (location, offset + 2, (value[0] >> 16) & 0xff);
+      rx_context_mem_write_byte (location, offset + 3, (value[0] >> 24) & 0xff);
+      rx_context_mem_write_byte (location, offset + 4, (value[0] >> 32) & 0xff);
+      rx_context_mem_write_byte (location, offset + 5, (value[0] >> 40) & 0xff);
+      rx_context_mem_write_byte (location, offset + 6, (value[0] >> 48) & 0xff);
+      rx_context_mem_write_byte (location, offset + 7, (value[0] >> 56) & 0xff);
+      rx_context_mem_write_byte (location, offset + 8, value[1] & 0xff);
+      rx_context_mem_write_byte (location, offset + 9, (value[1] >> 8) & 0xff);
+      rx_context_mem_write_byte (location, offset + 10, (value[1] >> 16) & 0xff);
+      rx_context_mem_write_byte (location, offset + 11, (value[1] >> 24) & 0xff);
+    }
+  E ();
+  COUNT (1, 12);
 }
 
 void
@@ -470,7 +727,7 @@ mem_get_byte (unsigned int address)
       E();
       return 0x04; /* transmitter empty */
       break;
-    default: 
+    default:
       if (trace)
 	printf (" %02x%c", *m, mtypec (address));
       if (is_reserved_address (address))
@@ -567,6 +824,102 @@ mem_get_si (int address)
       rv |= mem_get_byte (address + 3) << 24;
     }
   COUNT (0, 4);
+  E ();
+  return rv;
+}
+
+unsigned long long
+mem_get_di (int address)
+{
+  unsigned long long rv;
+  S ("=>");
+  if (rx_big_endian)
+    {
+      rv = (unsigned long long)mem_get_byte (address + 7);
+      rv |= (unsigned long long)mem_get_byte (address + 6) << 8;
+      rv |= (unsigned long long)mem_get_byte (address + 5) << 16;
+      rv |= (unsigned long long)mem_get_byte (address + 4) << 24;
+      rv |= (unsigned long long)mem_get_byte (address + 3) << 32;
+      rv |= (unsigned long long)mem_get_byte (address + 2) << 40;
+      rv |= (unsigned long long)mem_get_byte (address + 1) << 48;
+      rv |= (unsigned long long)mem_get_byte (address) << 56;
+    }
+  else
+    {
+      rv = (unsigned long long)mem_get_byte (address);
+      rv |= (unsigned long long)mem_get_byte (address + 1) << 8;
+      rv |= (unsigned long long)mem_get_byte (address + 2) << 16;
+      rv |= (unsigned long long)mem_get_byte (address + 3) << 24;
+      rv |= (unsigned long long)mem_get_byte (address + 4) << 32;
+      rv |= (unsigned long long)mem_get_byte (address + 5) << 40;
+      rv |= (unsigned long long)mem_get_byte (address + 6) << 48;
+      rv |= (unsigned long long)mem_get_byte (address + 7) << 56;
+    }
+  COUNT (0, 8);
+  E ();
+  return rv;
+}
+
+unsigned long
+mem_get_context_si (unsigned long location, unsigned long offset)
+{
+  unsigned long rv;
+
+  if (rx_big_endian)
+    {
+      rv = rx_context_mem_read_byte (location, offset + 3);
+      rv |= rx_context_mem_read_byte (location, offset + 2) << 8;
+      rv |= rx_context_mem_read_byte (location, offset + 1) << 16;
+      rv |= rx_context_mem_read_byte (location, offset) << 24;
+    }
+  else
+    {
+      rv = rx_context_mem_read_byte (location, offset);
+      rv |= rx_context_mem_read_byte (location, offset + 1) << 8;
+      rv |= rx_context_mem_read_byte (location, offset + 2) << 16;
+      rv |= rx_context_mem_read_byte (location, offset + 3) << 24;
+    }
+  COUNT (0, 4);
+  E ();
+  return rv;
+}
+
+unsigned long long *
+mem_get_context_acc (unsigned long location, unsigned long offset)
+{
+  unsigned long long *rv = malloc (sizeof(long long) * 2);
+
+  if (rx_big_endian)
+    {
+      rv[0] = (unsigned long long)rx_context_mem_read_byte (location, offset + 11);
+      rv[0] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 10) << 8;
+      rv[0] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 9) << 16;
+      rv[0] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 8) << 24;
+      rv[0] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 7) << 32;
+      rv[0] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 6) << 40;
+      rv[0] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 5) << 48;
+      rv[0] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 4) << 56;
+      rv[1] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 3);
+      rv[1] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 2) << 8;
+      rv[1] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 1) << 16;
+      rv[1] |= (unsigned long long)rx_context_mem_read_byte (location, offset) << 24;
+    }
+  else
+    {
+      rv[0] = (unsigned long long)rx_context_mem_read_byte (location, offset);
+      rv[0] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 1) << 8;
+      rv[0] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 2) << 16;
+      rv[0] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 3) << 24;
+      rv[0] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 4) << 32;
+      rv[0] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 5) << 40;
+      rv[0] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 6) << 48;
+      rv[0] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 7) << 56;
+      rv[1] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 8);
+      rv[1] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 9) << 8;
+      rv[1] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 10) << 16;
+      rv[1] |= (unsigned long long)rx_context_mem_read_byte (location, offset + 11) << 24;
+    }
+  COUNT (0, 12);
   E ();
   return rv;
 }

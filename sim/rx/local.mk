@@ -24,6 +24,7 @@ nodist_%C%_libsim_a_SOURCES = \
 	$(common_libcommon_a_SOURCES)
 %C%_libsim_a_LIBADD = \
 	%D%/fpu.o \
+	%D%/dpu.o \
 	%D%/load.o \
 	%D%/mem.o \
 	%D%/misc.o \

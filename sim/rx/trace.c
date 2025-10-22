@@ -345,7 +345,7 @@ sim_disasm_one (void)
 
 #endif
 
-  max = print_insn_rx (mypc, & info);
+  max = print_insn_rxv3_dfpu (mypc, & info);
 
   for (i = 0; i < max; i++)
     {

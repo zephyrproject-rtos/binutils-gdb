@@ -37,7 +37,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
    X 00000000 00000000000000000000001	Denormals
    X 00000000 11111111111111111111111
- 
+
    X 00000001 XXXXXXXXXXXXXXXXXXXXXXX	Normals
    X 11111110 XXXXXXXXXXXXXXXXXXXXXXX
 
@@ -358,7 +358,7 @@ static const char *ex_names[] = {
    FALSE, the caller should do the "normal" operation.  */
 static int
 check_exceptions (FP_Parts *a, FP_Parts *b, fp_t *c,
-		  FP_ExceptionCases ex_tab[5][5], 
+		  FP_ExceptionCases ex_tab[5][5],
 		  FP_ExceptionCases *case_ret)
 {
   FP_ExceptionCases fpec;
@@ -723,7 +723,7 @@ rxfp_ftoi (fp_t fa, int round_mode)
     }
 
   rv = sign ? -whole_bits : whole_bits;
-  
+
   return rv;
 }
 
@@ -792,3 +792,153 @@ rxfp_itof (long fa, int round_mode)
   return rv;
 }
 
+
+fp_t
+rxfp_utof (unsigned long fa, int round_mode)
+{
+  fp_t rv;
+  unsigned int frac_bits;
+  volatile unsigned int whole_bits;
+  FP_Parts a;
+
+  if (fa == 0)
+    return PLUS_ZERO;
+
+  a.sign = 1;
+
+  whole_bits = fa;
+  a.exp = 31;
+
+  while (! (whole_bits & 0x80000000UL))
+    {
+      a.exp --;
+      whole_bits <<= 1;
+    }
+  frac_bits = whole_bits & 0xff;
+  whole_bits = whole_bits >> 8;
+
+  if (frac_bits)
+    {
+      /* We must round */
+      switch (round_mode & 3)
+	{
+	case FPRM_NEAREST:
+	  if (frac_bits & 0x80)
+	    whole_bits ++;
+	  break;
+	case FPRM_ZERO:
+	  break;
+	case FPRM_PINF:
+	    whole_bits ++;
+	  break;
+	}
+    }
+
+  a.mant = whole_bits;
+  if (whole_bits & 0xff000000UL)
+    {
+      a.mant >>= 1;
+      a.exp ++;
+    }
+
+  rv = fp_implode (&a);
+  return rv;
+}
+
+unsigned long
+rxfp_ftou (fp_t fa)
+{
+	return (unsigned long)rxfp_ftoi(fa, FPRM_ZERO);
+}
+
+int
+check_sqrt_exceptions (FP_Parts *a, fp_t *c)
+{
+  /* handle exceptions which are the same for DN=1 and DN 0 */
+  switch(a->type)
+  {
+  case FP_NORMAL:
+	  if(a->sign == -1)
+	  {
+		  /* invalid operation */
+		  FP_RAISE(V);
+		  return 1;
+	  }
+	  else
+	  {
+		  return 0;
+	  }
+  case FP_PZERO:
+	  *c = 0x00000000;
+	  return 1;
+  case FP_NZERO:
+	  *c = 0x80000000;
+	  return 1;
+  case FP_PINFINITY:
+	  *c = 0x7F800000;
+	  return 1;
+  case FP_NINFINITY:
+	  /* invalid operation */
+	  FP_RAISE(V);
+  	  return 1;
+  case FP_QNAN:
+  	  *c = 0x7fffffff;
+  	  return 1;
+  case FP_SNAN:
+	  /* invalid operation */
+	  FP_RAISE(V);
+  	  return 1;
+  }
+
+
+  if(regs.r_fpsw & FPSWBITS_DN) /* DN = 1 */
+  {
+	  if(a->type == FP_DENORMAL)
+	  {
+		 if(a->sign == 1)
+		 {
+			  *c = 0x00000000;
+			  return 1;
+		 }
+		 else
+		 {
+			 *c = 0x80000000;
+			 return 1;
+		 }
+	  }
+  }
+  else /* DN = 0 */
+  {
+	  if(a->type == FP_DENORMAL)
+	  {
+		  /* Unimplemented */
+		  FP_RAISE(V);
+		  return 1;
+	  }
+  }
+
+  return 0;
+}
+
+/* we don't include math because of FP_DENORMAL and others */
+double 	sqrt(double x);
+
+fp_t
+rxfp_fsqrt (fp_t fa)
+{
+	fp_t rv;
+	FP_Parts a, b;
+	double da;
+	fp_explode (fa, &a);
+	if(check_sqrt_exceptions(&a, &rv))
+	{
+		return rv;
+	}
+	da = fp_to_double (&a);
+	tprintf("sqrt(%g) = %g\n", da, sqrt(da));
+
+	double_to_fp(sqrt(da), &b);
+	rv = fp_implode (&b);
+
+	return rv;
+}

@@ -34,11 +34,15 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "fpu.h"
 #include "err.h"
 #include "misc.h"
+#include "dpu.h"
+#include "bfd.h"
 
 #ifdef WITH_PROFILE
 static const char * const id_names[] = {
   "RXO_unknown",
   "RXO_mov",	/* d = s (signed) */
+  "RXO_movli", /* d = s, LI = 1 */
+  "RXO_movco", /* if (LI == 1) {dest=src;src=0;} else { src=1; } LI = 0; */
   "RXO_movbi",	/* d = [s,s2] (signed) */
   "RXO_movbir",	/* [s,s2] = d (signed) */
   "RXO_pushm",	/* s..s2 */
@@ -97,16 +101,29 @@ static const char * const id_names[] = {
   "RXO_sstr",
 
   "RXO_rmpa",
+  "RXO_emula",
+  "RXO_emaca",
+  "RXO_emsba",
+  "RXO_mullh",
   "RXO_mulhi",
   "RXO_mullo",
+  "RXO_maclh",
   "RXO_machi",
   "RXO_maclo",
+  "RXO_msblh",
+  "RXO_msbhi",
+  "RXO_msblo",
   "RXO_mvtachi",
   "RXO_mvtaclo",
+  "RXO_mvtacgu",
   "RXO_mvfachi",
   "RXO_mvfacmi",
   "RXO_mvfaclo",
+  "RXO_mvfacgu",
+  "RXO_rdacw",
+  "RXO_rdacl",
   "RXO_racw",
+  "RXO_racl",
 
   "RXO_sat",	/* sat(d) */
   "RXO_satr",
@@ -117,29 +134,59 @@ static const char * const id_names[] = {
   "RXO_ftoi",
   "RXO_fmul",
   "RXO_fdiv",
+  "RXO_fsqrt",
   "RXO_round",
   "RXO_itof",
+  "RXO_utof",
+  "RXO_ftou",
 
   "RXO_bset",	/* d |= (1<<s) */
   "RXO_bclr",	/* d &= ~(1<<s) */
   "RXO_btst",	/* s & (1<<s2) */
   "RXO_bnot",	/* d ^= (1<<s) */
   "RXO_bmcc",	/* d<s> = cond(s2) */
+  "RXO_bfmov",
+  "RXO_bfmovz",
 
   "RXO_clrpsw",	/* flag index in d */
   "RXO_setpsw",	/* flag index in d */
   "RXO_mvtipl",	/* new IPL in s */
 
   "RXO_rtfi",
+  "RXO_rstr",
   "RXO_rte",
   "RXO_rtd",	/* undocumented */
   "RXO_brk",
   "RXO_dbt",	/* undocumented */
   "RXO_int",	/* vector id in s */
   "RXO_stop",
+  "RXO_save",
   "RXO_wait",
 
   "RXO_sccnd",	/* d = cond(s) ? 1 : 0 */
+
+  "RXO_dabs",
+  "RXO_dadd",
+  "RXO_dcmp",
+  "RXO_ddiv",
+  "RXO_dmovhi",
+  "RXO_dmov",
+  "RXO_dmul",
+  "RXO_dneg",
+  "RXO_dpopm",
+  "RXO_dpushm",
+  "RXO_dround",
+  "RXO_dsqrt",
+  "RXO_dsub",
+  "RXO_dtof",
+  "RXO_dtoi",
+  "RXO_dtou",
+  "RXO_ftod",
+  "RXO_itod",
+  "RXO_mvfdc",
+  "RXO_mvfdr",
+  "RXO_mvtdc",
+  "RXO_utod",
 };
 
 static const char * const optype_names[] = {
@@ -336,10 +383,6 @@ static const int size2bytes[] = {
   4, 1, 1, 1, 2, 2, 2, 3, 4
 };
 
-typedef struct {
-  unsigned long dpc;
-} RX_Data;
-
 #define rx_abort() _rx_abort(__FILE__, __LINE__)
 static void ATTRIBUTE_NORETURN
 _rx_abort (const char *file, int line)
@@ -355,11 +398,11 @@ static RX_Opcode_Decoded **decode_cache_base;
 static SI get_byte_page;
 
 void
-reset_decoder (void)
+reset_decoder (SI tpc)
 {
   get_byte_base = 0;
   decode_cache_base = 0;
-  get_byte_page = 0;
+  get_byte_page = (~tpc) & NONPAGE_MASK;
 }
 
 static inline void
@@ -375,10 +418,9 @@ maybe_get_mem_page (SI tpc)
 
 /* This gets called a *lot* so optimize it.  */
 static int
-rx_get_byte (void *vdata)
+rx_get_byte (RX_Data *rx_data)
 {
-  RX_Data *rx_data = (RX_Data *)vdata;
-  SI tpc = rx_data->dpc;
+  SI tpc = rx_data->addr;
 
   /* See load.c for an explanation of this.  */
   if (rx_big_endian)
@@ -386,8 +428,63 @@ rx_get_byte (void *vdata)
 
   maybe_get_mem_page (tpc);
 
-  rx_data->dpc ++;
+  rx_data->addr ++;
   return get_byte_base [tpc];
+}
+
+static long long *
+get_op_72 (const RX_Opcode_Decoded *rd, int i)
+{
+	const RX_Opcode_Operand *o = rd->op + i;
+
+	switch (o->type)
+	{
+	case RX_Operand_Register:	/* An */
+		return get_reg72 (o->reg);
+	default:
+		abort ();
+	}
+}
+
+static long long
+get_op_64 (const RX_Opcode_Decoded *rd, int i)
+{
+	const RX_Opcode_Operand *o = rd->op + i;
+	long long result;
+	int addr;
+
+	switch (o->type)
+	{
+	case RX_Operand_Register:	/* An */
+		return get_reg72 (o->reg)[0];
+	case RX_Operand_Zero_Indirect:
+	case RX_Operand_Indirect:
+		addr = get_reg (o->reg) + o->addend;
+		result = mem_get_si (addr) & 0xFFFFFFFF;
+		result |= (long long)mem_get_si (addr + 4) << 32;
+		return result;
+	default:
+		abort ();
+	}
+}
+
+static long long
+get_op_double (const RX_Opcode_Decoded *rd, int i)
+{
+  const RX_Opcode_Operand *o = rd->op + i;
+
+  switch (o->type)
+  {
+    case RX_Operand_DR_Register: /* DRn */
+	case RX_Operand_DRH_Register:
+	case RX_Operand_DRL_Register:
+      return get_reg_double (o->reg);
+	//TODO: this should not be here
+    case RX_Operand_Immediate:  /* #addend */
+      return o->addend;
+    default:
+      abort ();
+  }
 }
 
 static int
@@ -476,6 +573,9 @@ get_op (const RX_Opcode_Decoded *rd, int i)
 
     case RX_Operand_Flag:	/* [UIOSZC] */
       return (regs.r_psw & (1 << o->reg)) ? 1 : 0;
+
+	case RX_Operand_DFPU_Condition:
+	  return o->reg;
     }
 
   /* if we've gotten here, we need to clip/extend the value according
@@ -518,6 +618,61 @@ get_op (const RX_Opcode_Decoded *rd, int i)
       break;
     }
   return rv;
+}
+
+static void
+put_op_72 (const RX_Opcode_Decoded *rd, int i, long long *v)
+{
+	const RX_Opcode_Operand *o = rd->op + i;
+
+	switch (o->type)
+	{
+	case RX_Operand_Register:	/* An */
+		put_reg72 (o->reg, (unsigned long long *)v);
+		break;
+	default:
+		abort ();
+	}
+}
+
+static void
+put_op_64 (const RX_Opcode_Decoded *rd, int i, long long v)
+{
+	const RX_Opcode_Operand *o = rd->op + i;
+	DI v72[2] = {(unsigned long long)v, 0};
+	int addr;
+
+	switch (o->type)
+	{
+	case RX_Operand_Register:	/* An */
+		put_reg72(o->reg, v72);
+		break;
+	case RX_Operand_Zero_Indirect:
+	case RX_Operand_Indirect:
+		addr = get_reg (o->reg) + o->addend;
+		mem_put_si (addr, v & 0xFFFFFFFF);
+		mem_put_si (addr + 4, (v >> 32) & 0xFFFFFFFF);
+		break;
+	default:
+		abort ();
+	}
+}
+
+static void
+put_op_double (const RX_Opcode_Decoded *rd, int i, long long v)
+{
+  const RX_Opcode_Operand *o = rd->op + i;
+
+  switch (o->type)
+  {
+  case RX_Operand_DR_Register: /* DRn */
+  case RX_Operand_DRH_Register:
+  case RX_Operand_DRL_Register:
+    put_reg_double (o->reg, (unsigned long long)v);
+    break;
+  default:
+    abort ();
+  }
 }
 
 static void
@@ -654,13 +809,57 @@ put_op (const RX_Opcode_Decoded *rd, int i, int v)
 #define GD() get_op (opcode, 0)
 #define GS() get_op (opcode, 1)
 #define GS2() get_op (opcode, 2)
+#define GS3() get_op (opcode, 3)
+#define GS4() get_op (opcode, 4)
 #define DSZ() size2bytes[opcode->op[0].size]
 #define SSZ() size2bytes[opcode->op[0].size]
 #define S2SZ() size2bytes[opcode->op[0].size]
 
+#define GD_72() get_op_72 (opcode, 0)
+#define GD_DB() get_op_double (opcode, 0)
+#define GD_64() get_op_64 (opcode, 0)
+#define GS_72() get_op_72 (opcode, 1)
+#define GS_64() get_op_64 (opcode, 1)
+#define GS_DB() get_op_double (opcode, 1)
+#define GS2_DB() get_op_double (opcode, 2)
+#define PD_72(x) put_op_72 (opcode, 0, x)
+#define PD_64(x) put_op_64 (opcode, 0, x)
+#define PD_DB(x) put_op_double (opcode, 0, x)
+
 /* "Universal" sources.  */
 #define US1() ((opcode->op[2].type == RX_Operand_None) ? GD() : GS())
 #define US2() ((opcode->op[2].type == RX_Operand_None) ? GS() : GS2())
+
+#define CONTEXT 92
+
+static void
+push_context(int src)
+{
+  int v;
+  int offset = 0;
+  //TODO: change to error
+  src = (src >= 255)? 255 : src;
+
+  tprintf("Saving to context memory location: %d\n", src);
+  /* push regs from r1 to r15 to context memory */
+  for (v = 1; v <= 15; v++)
+  {
+    tprintf("save:%d %d\n", src, offset);
+	mem_put_context_si (src, offset, get_reg(v));
+	offset += 4;
+  }
+
+  /* push usp and fpsw to context memory */
+  mem_put_context_si (src, offset, get_reg(usp));
+  offset += 4;
+  mem_put_context_si (src, offset, get_reg(fpsw));
+  offset += 4;
+
+  /* push acc0 and acc1 to context memory */
+  mem_put_context_acc (src, offset, get_reg72(acc0));
+  offset += 12;
+  mem_put_context_acc (src, offset, get_reg72(acc1));
+}
 
 static void
 push(int val)
@@ -669,6 +868,13 @@ push(int val)
   rsp -= 4;
   put_reg (sp, rsp);
   mem_put_si (rsp, val);
+}
+
+static void
+push_double(unsigned long long val)
+{
+  push (val >> 32);
+  push (val & 0xFFFFFFFF);
 }
 
 /* Just like the above, but tag the memory as "pushed pc" so if anyone
@@ -683,6 +889,43 @@ pushpc(int val)
   mem_set_content_range (rsp, rsp+3, MC_PUSHED_PC);
 }
 
+static void
+pop_context(int src)
+{
+  int v;
+  int offset = 0;
+  int content;
+  long long * contentACC;
+  //TODO: change to error
+  src = (src > 255)? 255 : src;
+
+  tprintf("Restoring from context memory location: %d\n", src);
+  /* pop regs from r1 to r15 to context memory */
+  for (v = 1; v <= 15; v++)
+  {
+    content = mem_get_context_si (src, offset);
+    offset += 4;
+    put_reg (v, content);
+  }
+
+  /* pop usp and fpsw to context memory */
+  content = mem_get_context_si (src, offset);
+  offset += 4;
+  put_reg (usp, content);
+
+  content = mem_get_context_si (src, offset);
+  offset += 4;
+  put_reg (fpsw, content);
+
+  /* pop acc0 and acc1 to context memory */
+  contentACC = mem_get_context_acc (src, offset);
+  offset += 4;
+  put_reg72 (acc0, contentACC);
+
+  contentACC = mem_get_context_acc (src, offset);
+  put_reg72 (acc1, contentACC);
+}
+
 static int
 pop (void)
 {
@@ -692,6 +935,12 @@ pop (void)
   rsp += 4;
   put_reg (sp, rsp);
   return rv;
+}
+
+static unsigned long long
+pop_double()
+{
+  return (pop() & 0x00000000ffffffff) | ((unsigned long long)pop() << 32);
 }
 
 static int
@@ -737,7 +986,7 @@ poppc (void)
 #define SHIFT_OP(val, type, count, OP, carry_mask)	\
 { \
   int i, c=0; \
-  count = US2(); \
+  count = US2() & 31; \
   val = (type)US1();				\
   tprintf("%lld " #OP " %d\n", val, count); \
   for (i = 0; i < count; i ++) \
@@ -799,6 +1048,105 @@ fop_fsub (fp_t s1, fp_t s2, fp_t *d)
   return 1;
 }
 
+static int
+dop_dmul (dp_t s1, dp_t s2, dp_t *d)
+{
+  // Must call the rxdp function first
+  // so flags have a chance to be raised
+  dp_t temp = rxdp_mul(s1, s2);
+
+  //If undeflow flag is raised, handle things accordingly
+  //Else do the regular thing
+  if(regs.r_dpsw & DPSWBITS_DFU) {
+    // If DDN is 1, return 0
+    // Else, don't change the dest value, and raise unimplm processing
+    if(regs.r_dpsw & DPSWBITS_DDN) {
+      *d = 0;
+    } else {
+      regs.r_dpsw |= DPSWBITS_DCE;
+      return 0;
+    }
+  } else {
+    *d = temp;
+  }
+
+  return 1;
+}
+
+static int
+dop_ddiv (dp_t s1, dp_t s2, dp_t *d)
+{
+  // Must call the rxdp function first
+  // so flags have a chance to be raised
+  dp_t temp = rxdp_div(s1, s2);
+
+  //If undeflow flag is raised, handle things accordingly
+  //Else do the regular thing
+  if(regs.r_dpsw & DPSWBITS_DFU) {
+    // If DDN is 1, return 0
+    // Else, don't change the dest value, and raise unimplm processing
+    if(regs.r_dpsw & DPSWBITS_DDN) {
+      *d = 0;
+    } else {
+      regs.r_dpsw |= DPSWBITS_DCE;
+      tprintf("[SIM] DDN no dest write\n", *d);
+      return 0;
+    }
+  } else {
+    *d = temp;
+  }
+
+  return 1;
+}
+
+static int
+dop_dsub (dp_t s1, dp_t s2, dp_t *d)
+{
+  // Must call the rxdp function first
+  // so flags have a chance to be raised
+  dp_t temp = rxdp_sub(s1, s2);
+
+  //If undeflow flag is raised, handle things accordingly
+  //Else do the regular thing
+  if(regs.r_dpsw & DPSWBITS_DFU) {
+    // If DDN is 1, return 0
+    // Else, don't change the dest value, and raise unimplm processing
+    if(regs.r_dpsw & DPSWBITS_DDN) {
+      *d = 0;
+    } else {
+      regs.r_dpsw |= DPSWBITS_DCE;
+      return 0;
+    }
+  } else {
+    *d = temp;
+  }
+
+  return 1;
+}
+
+static int
+dop_dadd (dp_t s1, dp_t s2, dp_t *d)
+{
+  // Must call the rxdp function first
+  // so flags have a chance to be raised
+  dp_t temp = rxdp_add(s1, s2);
+  //If undeflow flag is raised, handle things accordingly
+  //Else do the regular thing
+  if(regs.r_dpsw & DPSWBITS_DFU) {
+    // If DDN is 1, return 0
+    // Else, don't change the dest value, and raise unimplm processing
+    if(regs.r_dpsw & DPSWBITS_DDN) {
+      *d = 0;
+    } else {
+      regs.r_dpsw |= DPSWBITS_DCE;
+      return 0;
+    }
+  } else {
+    *d = temp;
+  }
+  return 1;
+}
+
 #define FPPENDING() (regs.r_fpsw & (FPSWBITS_CE | (FPSWBITS_FMASK & (regs.r_fpsw << FPSW_EFSH))))
 #define FPCLEAR() regs.r_fpsw &= FPSWBITS_CLEAR
 #define FPCHECK() \
@@ -823,6 +1171,37 @@ fop_fsub (fp_t s1, fp_t s2, fp_t *d)
   if ((fc & 0x7fffffffUL) == 0)			\
     mb |= FLAGBIT_Z; \
   set_flags (FLAGBIT_S | FLAGBIT_Z, mb); \
+}
+
+#define FLOAT_OP2(func) \
+{ \
+  int do_store;   \
+  fp_t fa, fb, fc; \
+  FPCLEAR(); \
+  fb = GS (); \
+  fa = GS2  (); \
+  do_store = fop_##func (fa, fb, &fc); \
+  tprintf("%g " #func " %g = %g %08x\n", int2float(fa), int2float(fb), int2float(fc), fc); \
+  FPCHECK(); \
+  if (do_store) \
+    PD (fc);	\
+  mb = 0; \
+  if ((fc & 0x80000000UL) != 0) \
+    mb |= FLAGBIT_S; \
+  if ((fc & 0x7fffffffUL) == 0)			\
+    mb |= FLAGBIT_Z; \
+  set_flags (FLAGBIT_S | FLAGBIT_Z, mb); \
+}
+
+#define DOUBLE_OP2(func) \
+{ \
+  int do_store;  \
+  dp_t da, db, dc;   \
+  db = GS2_DB ();  \
+  da = GS_DB ();  \
+  do_store = dop_##func (da, db, &dc);  \
+  if (do_store)  \
+    PD_DB (dc); \
 }
 
 #define carry (FLAG_C ? 1 : 0)
@@ -939,8 +1318,11 @@ decode_opcode (void)
   unsigned int uma=0, umb=0;
   int ma=0, mb=0;
   int opcode_size, v;
-  unsigned long long ll;
+  unsigned long tmp1, tmp2;
+  signed long long ltmp1, ltmp2, ltmp3;
+  unsigned long long ll, dins, da, db;
   long long sll;
+  long long *sll72;
   unsigned long opcode_pc;
   RX_Data rx_data;
   const RX_Opcode_Decoded *opcode;
@@ -970,10 +1352,10 @@ decode_opcode (void)
   if (decode_cache_base[opcode_pc] == NULL)
     {
       RX_Opcode_Decoded *opcode_w;
-      rx_data.dpc = opcode_pc;
+      rx_data.addr = opcode_pc;
       opcode_w = decode_cache_base[opcode_pc] = calloc (1, sizeof (RX_Opcode_Decoded));
       opcode_size = rx_decode_opcode (opcode_pc, opcode_w,
-				      rx_get_byte, &rx_data);
+				      rx_get_byte, &rx_data, bfd_mach_rx_v3_dfpu);
       opcode = opcode_w;
     }
   else
@@ -1175,7 +1557,10 @@ decode_opcode (void)
       if (FLAG_PM
 	  && (v == FLAGBIT_I
 	      || v == FLAGBIT_U))
-	break;
+      {
+        cycles (1);
+	    break;
+      }
       regs.r_psw &= ~v;
       cycles (1);
       break;
@@ -1241,8 +1626,16 @@ decode_opcode (void)
       break;
 
     case RXO_fadd:
-      FLOAT_OP (fadd);
-      E (4);
+      if(opcode->op[2].type != RX_Operand_None)
+      {
+    	  FLOAT_OP2 (fadd);
+          E (2);
+      }
+      else
+      {
+    	  FLOAT_OP (fadd);
+          E (4);
+      }
       break;
 
     case RXO_fcmp:
@@ -1260,23 +1653,50 @@ decode_opcode (void)
       break;
 
     case RXO_fmul:
-      FLOAT_OP (fmul);
-      E (3);
+      if(opcode->op[2].type != RX_Operand_None)
+      {
+    	  FLOAT_OP2 (fmul);
+    	  E (2);
+      }
+      else
+      {
+    	  FLOAT_OP (fmul);
+    	  E (3);
+      }
       break;
 
     case RXO_rtfi:
       PRIVILEDGED ();
       regs.r_psw = regs.r_bpsw;
       regs.r_pc = regs.r_bpc;
+      put_reg(libit, 0);
 #ifdef CYCLE_ACCURATE
       regs.fast_return = 0;
       cycles(3);
 #endif
       break;
 
+    case RXO_rstr:
+      pop_context (GS());
+	  cycles (1);//TODO: update
+      break;
+
+    case RXO_save:
+      push_context (GS());
+	  cycles (1);//TODO: update
+      break;
+
     case RXO_fsub:
-      FLOAT_OP (fsub);
-      E (4);
+      if(opcode->op[2].type != RX_Operand_None)
+      {
+    	  FLOAT_OP2 (fsub);
+    	  E (2);
+      }
+      else
+      {
+    	  FLOAT_OP (fsub);
+    	  E (4);
+      }
       break;
 
     case RXO_ftoi:
@@ -1320,6 +1740,59 @@ decode_opcode (void)
       E (2);
       break;
 
+    case RXO_utof:
+      uma = GS ();
+      FPCLEAR ();
+      umb = rxfp_utof (uma, regs.r_fpsw);
+      FPCHECK ();
+      tprintf("(float) %d = %x\n", uma, umb);
+      PD (umb);
+      set_sz (uma, 4);
+      if (opcode->op[1].type == RX_Operand_Register)
+      {
+    	  E (2);
+      }
+      else
+      {
+    	  E (2);
+      }
+      break;
+
+    case RXO_ftou:
+      uma = GS ();
+      FPCLEAR ();
+      umb = rxfp_ftou (uma);
+      FPCHECK ();
+      tprintf("(unsigned) %x = %d\n", uma, umb);
+      PD (umb);
+      set_sz (uma, 4);
+      if (opcode->op[1].type == RX_Operand_Register)
+      {
+    	  E (2);
+      }
+      else
+      {
+    	  E (2);
+      }
+      break;
+
+    case RXO_fsqrt:
+      uma = GS ();
+      FPCLEAR ();
+      umb = rxfp_fsqrt (uma);
+      FPCHECK ();
+      PD (umb);
+      set_sz (uma, 4);
+      if (opcode->op[1].type == RX_Operand_Register)
+      {
+    	  E (16);
+      }
+      else
+      {
+    	  E (18);
+      }
+      break;
+
     case RXO_jsr:
     case RXO_jsrrel:
       {
@@ -1355,17 +1828,87 @@ decode_opcode (void)
       }
       break;
 
+    case RXO_maclh:
+      ma = (short) GS();
+      mb = (short) (GS2() >> 16);
+      sll72 = GD_72();
+      sll = sll72[0];
+      ltmp1 = (((long long) ma) * ((long long) mb)) << 16;
+      ltmp2 = (ltmp1 & 0x8000000000000000LL) ? 0xFFFFFFFFFFFFFFFFLL : 0x0LL;
+      sll72[0] += ltmp1;
+      ltmp3 = ((unsigned long long)sll72[0] < (unsigned long long)sll);
+      sll72[1] += ltmp2 + ltmp3;
+      PD_72(sll72);
+      E1;
+      break;
+
     case RXO_machi:
-      ll = (long long)(signed short)(GS() >> 16) * (long long)(signed short)(GS2 () >> 16);
-      ll <<= 16;
-      put_reg64 (acc64, ll + regs.r_acc);
+      ma = (short) (GS() >> 16);
+      mb = (short) (GS2() >> 16);
+      sll72 = GD_72();
+      sll = sll72[0];
+      ltmp1 = (((long long) ma) * ((long long) mb)) << 16;
+      ltmp2 = (ltmp1 & 0x8000000000000000LL) ? 0xFFFFFFFFFFFFFFFFLL : 0x0LL;
+      sll72[0] += ltmp1;
+      ltmp3 = ((unsigned long long)sll72[0] < (unsigned long long)sll);
+      sll72[1] += ltmp2 + ltmp3;
+      PD_72(sll72);
       E1;
       break;
 
     case RXO_maclo:
-      ll = (long long)(signed short)(GS()) * (long long)(signed short)(GS2 ());
-      ll <<= 16;
-      put_reg64 (acc64, ll + regs.r_acc);
+      ma = (short) GS();
+      mb = (short) GS2();
+      sll72 = GD_72();
+      sll = sll72[0];
+      ltmp1 = (long long) (ma * mb) << 16;
+      ltmp2 = (ltmp1 & 0x8000000000000000LL) ? 0xFFFFFFFFFFFFFFFFLL : 0x0LL;
+      sll72[0] += ltmp1;
+      ltmp3 = ((unsigned long long)sll72[0] < (unsigned long long)sll);
+      sll72[1] += ltmp2 + ltmp3;
+      PD_72(sll72);
+      E1;
+      break;
+
+    case RXO_msblh:
+      ma = (short) GS();
+      mb = (short) (GS2() >> 16);
+      sll72 = GD_72();
+      sll = sll72[0];
+      ltmp1 = (((long long) ma) * ((long long) mb)) << 16;
+      ltmp2 = (ltmp1 & 0x8000000000000000LL) ? 0xFFFFFFFFFFFFFFFFLL : 0x0LL;
+      sll72[0] -= ltmp1;
+      ltmp3 = ((unsigned long long)sll72[0] > (unsigned long long)sll);
+      sll72[1] -= ltmp2 + ltmp3;
+      PD_72(sll72);
+      E1;
+      break;
+
+    case RXO_msbhi:
+      ma = (short) (GS() >> 16);
+      mb = (short) (GS2() >> 16);
+      sll72 = GD_72();
+      sll = sll72[0];
+      ltmp1 = (((long long) ma) * ((long long) mb)) << 16;
+      ltmp2 = (ltmp1 & 0x8000000000000000LL) ? 0xFFFFFFFFFFFFFFFFLL : 0x0LL;
+      sll72[0] -= ltmp1;
+      ltmp3 = ((unsigned long long)sll72[0] > (unsigned long long)sll);
+      sll72[1] -= ltmp2 + ltmp3;
+      PD_72(sll72);
+      E1;
+      break;
+
+    case RXO_msblo:
+      ma = (short) GS();
+      mb = (short) GS2();
+      sll72 = GD_72();
+      sll = sll72[0];
+      ltmp1 = (((long long) ma) * ((long long) mb)) << 16;
+      ltmp2 = (ltmp1 & 0x8000000000000000LL) >> 63;
+      ltmp3 = ((unsigned long long)sll72[0] > (unsigned long long)sll);
+      sll72[0] -= ltmp1;
+      sll72[1] -= ltmp2 + ltmp3;
+      PD_72(sll72);
       E1;
       break;
 
@@ -1390,10 +1933,19 @@ decode_opcode (void)
       break;
 
     case RXO_mov:
-      v = GS ();
+		/* TODO: we need to update this!!! */
+      if (opcode->op[1].type == RX_Operand_Register
+		&& opcode->op[1].reg == fpsw /* FPSW */)
+	  {
+		  v =  regs.r_fpsw;
+	  }
+	  else
+	  {
+		  v = GS ();
+	  }
 
       if (opcode->op[1].type == RX_Operand_Register
-	  && opcode->op[1].reg == 17 /* PC */)
+	  && opcode->op[1].reg == pc /* PC */)
 	{
 	  /* Special case.  We want the address of the insn, not the
 	     address of the next insn.  */
@@ -1401,7 +1953,7 @@ decode_opcode (void)
 	}
 
       if (opcode->op[0].type == RX_Operand_Register
-	  && opcode->op[0].reg == 16 /* PSW */)
+	  && opcode->op[0].reg == psw /* PSW */)
 	{
 	  /* Special case, LDC and POPC can't ever modify PM.  */
 	  int pm = regs.r_psw & FLAGBIT_PM;
@@ -1417,15 +1969,15 @@ decode_opcode (void)
 	{
 	  /* various things can't be changed in user mode.  */
 	  if (opcode->op[0].type == RX_Operand_Register)
-	    if (opcode->op[0].reg == 32)
+	    if (opcode->op[0].reg == psw)
 	      {
 		v &= ~ (FLAGBIT_I | FLAGBIT_U | FLAGBITS_IPL);
 		v |= regs.r_psw & (FLAGBIT_I | FLAGBIT_U | FLAGBITS_IPL);
 	      }
-	  if (opcode->op[0].reg == 34 /* ISP */
-	      || opcode->op[0].reg == 37 /* BPSW */
-	      || opcode->op[0].reg == 39 /* INTB */
-	      || opcode->op[0].reg == 38 /* VCT */)
+	  if (opcode->op[0].reg == isp /* ISP */
+	      || opcode->op[0].reg == bpsw /* BPSW */
+	      || opcode->op[0].reg == intb /* INTB */
+	      || opcode->op[0].reg == fintv /* VCT */)
 	    /* These are ignored.  */
 	    break;
 	}
@@ -1451,6 +2003,28 @@ decode_opcode (void)
       set_sz (v, DSZ());
       break;
 
+    case  RXO_movli:
+      v = GS();
+      PD(v);
+      put_reg(libit, 1);
+      cycles (1);
+      break;
+
+    case  RXO_movco:
+      if(get_reg(libit) == 1)
+      {
+    	v = GS();
+    	PD(v);
+    	PS(0);
+      }
+      else
+      {
+    	PS(1);
+      }
+      put_reg(libit, 0);
+      cycles (1);
+      break;
+
     case RXO_movbi:
       PD (GS ());
       cycles (1);
@@ -1461,6 +2035,34 @@ decode_opcode (void)
       cycles (1);
       break;
 
+    case RXO_bfmov:
+      // GS2 = slsb; GS3 = dlsb; GS4 = width; GS = src; GD = dest
+	  tmp1 = (0xFFFFFFFF >> (32 - GS4())) << GS3();
+      tprintf("bfmov\n");
+      tprintf("slsb: %d\n", GS2());
+      tprintf("dlsb: %d\n", GS3());
+      tprintf("width: %d\n", GS4());
+	  tprintf("tmp1: 0x%X\n", tmp1);
+	  tmp2 = (GS() >> GS2()) << GS3();
+	  tprintf("tmp2: 0x%X\n", tmp2);
+	  PD((tmp2 & tmp1) | (GD() & (~tmp1)));
+	  cycles (1);//TODO: update
+	  break;
+
+    case RXO_bfmovz:
+      // GS2 = slsb; GS3 = dlsb; GS4 = width; GS = src; GD = dest
+      tmp1 = (0xFFFFFFFF >> (32 - GS4())) << GS3();
+      tprintf("bfmovz\n");
+      tprintf("slsb: %d\n", GS2());
+      tprintf("dlsb: %d\n", GS3());
+      tprintf("width: %d\n", GS4());
+      tprintf("src: %d\n", GS());
+      tprintf("dest: %d\n", GD());
+      tmp2 = (GS() >> GS2()) << GS3();
+      PD((tmp2 & tmp1));
+	  cycles (1);//TODO: update
+	  break;
+
     case RXO_mul:
       v = US2 ();
       ll = (unsigned long long) US1() * (unsigned long long) v;
@@ -1468,44 +2070,131 @@ decode_opcode (void)
       E (1);
       break;
 
+    case RXO_emula:
+      ma = GS();
+      mb = GS2();
+      sll = (long long) ma * (long long) mb;
+      PD_64(sll);
+      E1;
+      break;
+
+    case RXO_emaca:
+      ma = GS();
+      mb = GS2();
+      sll72 = GD_72();
+      sll = sll72[0];
+      ltmp1 = (((long long) ma) * ((long long) mb));
+      ltmp2 = (ltmp1 & 0x8000000000000000LL) ? 0xFFFFFFFFFFFFFFFFLL : 0x0LL;
+      sll72[0] += ltmp1;
+      if((ltmp1) > 0)
+      {
+        ltmp3 = ((unsigned long long)sll72[0] < (unsigned long long)sll);
+      }
+      else
+      {
+        ltmp3 = ((unsigned long long)sll72[0] > (unsigned long long)sll);
+      }
+      sll72[1] += ltmp2 + ltmp3;
+      PD_72(sll72);
+      E1;
+      break;
+
+    case RXO_emsba:
+      ma = GS();
+      mb = GS2();
+      sll72 = GD_72();
+      sll = sll72[0];
+      ltmp1 = (((long long) ma) * ((long long) mb));
+      ltmp2 = (ltmp1 & 0x8000000000000000LL) ? 0xFFFFFFFFFFFFFFFFLL : 0x0LL;
+      sll72[0] -= ltmp1;
+      if((ltmp1) > 0)
+      {
+        ltmp3 = ((unsigned long long)sll72[0] < (unsigned long long)sll);
+      }
+      else
+      {
+        ltmp3 = ((unsigned long long)sll72[0] > (unsigned long long)sll);
+      }
+      sll72[1] += ltmp2 + ltmp3;
+      PD_72(sll72);
+      E1;
+      break;
+
+    case RXO_mullh:
+      ma = (short) GS();
+      mb = (short) (GS2() >> 16);
+      sll = ((long long)ma) * ((long long)mb);
+      sll <<= 16;
+      PD_64(sll);
+      E1;
+      break;
+
     case RXO_mulhi:
-      v = GS2 ();
-      ll = (long long)(signed short)(GS() >> 16) * (long long)(signed short)(v >> 16);
-      ll <<= 16;
-      put_reg64 (acc64, ll);
+      ma = (short) (GS() >> 16);
+      mb = (short) (GS2() >> 16);
+      sll = ((long long)ma) * ((long long)mb);
+      sll <<= 16;
+      PD_64(sll);
       E1;
       break;
 
     case RXO_mullo:
-      v = GS2 ();
-      ll = (long long)(signed short)(GS()) * (long long)(signed short)(v);
-      ll <<= 16;
-      put_reg64 (acc64, ll);
+      ma = (short) GS();
+      mb = (short) GS2();
+      sll = ((long long)ma) * ((long long)mb);
+      sll <<= 16;
+      PD_64(sll);
       E1;
       break;
 
     case RXO_mvfachi:
-      PD (get_reg (acchi));
+      v = GS2();
+      sll = GS_64();
+      v = (sll << v) >> 32;
+      PD (v);
       E1;
       break;
 
     case RXO_mvfaclo:
-      PD (get_reg (acclo));
+      v = GS2();
+      sll = GS_64();
+      v = sll << v;
+      PD (v);
       E1;
       break;
 
     case RXO_mvfacmi:
-      PD (get_reg (accmi));
+      v = GS2();
+      sll = GS_64();
+      v = (sll << v) >> 16;
+      PD (v);
+      E1;
+      break;
+
+    case RXO_mvfacgu:
+      v = GS2();
+      sll72 = GS_72();
+      v = sll72[1] << v;
+      PD (v);
       E1;
       break;
 
     case RXO_mvtachi:
-      put_reg (acchi, GS ());
+      sll = (GD_64() & 0xFFFFFFFF) | ((unsigned long long)GS() << 32);
+      PD_64(sll);
       E1;
       break;
 
     case RXO_mvtaclo:
-      put_reg (acclo, GS ());
+      sll = (GD_64() & 0xFFFFFFFF00000000) | GS();
+      PD_64(sll);
+      E1;
+      break;
+
+    case RXO_mvtacgu:
+      sll72 = GD_72();
+      sll72[1] = GS() & 0xFF;
+      PD_72(sll72);
       E1;
       break;
 
@@ -1563,16 +2252,149 @@ decode_opcode (void)
       cycles (opcode->op[2].reg - opcode->op[1].reg + 1);
       break;
 
-    case RXO_racw:
-      ll = get_reg64 (acc64) << GS ();
-      ll += 0x80000000ULL;
-      if ((signed long long)ll > (signed long long)0x00007fff00000000ULL)
-	ll = 0x00007fff00000000ULL;
-      else if ((signed long long)ll < (signed long long)0xffff800000000000ULL)
-	ll = 0xffff800000000000ULL;
+    case RXO_rdacw:
+      sll72 = GD_72();
+      v = GS();
+      /* tmp = (signed 72bit) Adest << src; */
+      sll72[0] <<= v;
+      sll72[1] <<= v;
+      /* if (tmp > (signed 72bit) 000_0000_7FFF_0000_0000h) */
+      if ((unsigned long long)sll72[0] > 0x7FFF00000000ULL)
+      {
+    	  /* Adest = 00_0000_7FFF_0000_0000h; */
+    	  sll72[0] = 0x7FFF00000000LL;
+    	  sll72[1] = 0x0;
+      }
+      /* else if (tmp72 < (signed 72bit) FF_FFFF_8000_0000_0000h) */
+      else if((sll72[1] & 0x80) &&
+    		  (((unsigned long long)sll72[1] < 0xFFFFFFFFFFFFFFFFULL) ||
+    		  (((unsigned long long)sll72[1] == 0xFFFFFFFFFFFFFFFFULL)
+    		  && ((unsigned long long)sll72[0] < 0xFFFF800000000000ULL))))
+      {
+    	  /* Adest = FF_FFFF_8000_0000_0000h;*/
+    	  sll72[0] = 0xFFFF800000000000LL;
+    	  sll72[1] = 0xFFLL;
+      }
       else
-	ll &= 0xffffffff00000000ULL;
-      put_reg64 (acc64, ll);
+      {
+      	  /* Adest = tmp & FF_FFFF_FFFF_0000_0000h; */
+       	  sll72[0] &= 0xFFFFFFFF00000000LL;
+    	  sll72[1] &= 0xFFLL;
+      }
+      PD_72(sll72);
+      E1;
+      break;
+
+    case RXO_rdacl:
+      sll72 = GD_72();
+      v = GS();
+      /* tmp = (signed 72bit) Adest << src; */
+      sll72[0] <<= v;
+      sll72[1] <<= v;
+      /* if (tmp > (signed 72bit) 00_7FFF_FFFF_0000_0000h)  */
+      if ((unsigned long long)sll72[0] > 0x7FFFFFFF00000000ULL)
+      {
+    	  /* Adest = 00_7FFF_FFFF_0000_0000h;  */
+       	  sll72[0] = 0x7FFFFFFF00000000LL;
+       	  sll72[1] = 0x0;
+      }
+      /* else if (tmp < (signed 72bit) FF_8000_0000_0000_0000h) */
+      else if((sll72[1] & 0x80) &&
+      	  	  (((unsigned long long)sll72[1] < 0xFFFFFFFFFFFFFFFFULL) ||
+          		  (((unsigned long long)sll72[1] == 0xFFFFFFFFFFFFFFFFULL)
+          		  && ((unsigned long long)sll72[0] < 0x8000000000000000ULL))))
+      {
+       	  /* Adest = FF_8000_0000_0000_0000h; */
+       	  sll72[0] = 0x8000000000000000LL;
+       	  sll72[1] = 0xFFLL;
+         }
+      else
+      {
+      	  /* Adest = tmp & FF_FFFF_FFFF_0000_0000h; */
+       	  sll72[0] &= 0xFFFFFFFF00000000LL;
+       	  sll72[1] &= 0xFFLL;
+      }
+      PD_72(sll72);
+      E1;
+      break;
+
+    case RXO_racw:
+      sll72 = GD_72();
+      v = GS();
+      /* tmp = (signed 72bit) Adest << src; */
+      sll72[0] <<= v;
+      sll72[1] <<= v;
+      /* tmp73 = (signed 73bit) tmp + 000_0000_0000_8000_0000h; */
+      sll72[0] += 0x80000000LL;
+      /*if overflow */
+      if((unsigned long long)sll72[0] < 0x80000000ULL)
+      {
+    	  sll72[1]++;
+      }
+      /* if (tmp > (signed 72bit) 000_0000_7FFF_0000_0000h) */
+      if ((unsigned long long)sll72[0] > 0x7FFF00000000ULL)
+      {
+    	  /* Adest = 00_0000_7FFF_0000_0000h; */
+          sll72[0] = 0x7FFF00000000LL;
+          sll72[1] = 0x0;
+      }
+      /* else if (tmp72 < (signed 72bit) FF_FFFF_8000_0000_0000h) */
+      else if((sll72[1] & 0x80) &&
+       		  (((unsigned long long)sll72[1] < 0xFFFFFFFFFFFFFFFFULL) ||
+       		  (((unsigned long long)sll72[1] == 0xFFFFFFFFFFFFFFFFULL)
+       		  && ((unsigned long long)sll72[0] < 0xFFFF800000000000ULL))))
+      {
+       	  /* Adest = FF_FFFF_8000_0000_0000h;*/
+       	  sll72[0] = 0xFFFF800000000000LL;
+       	  sll72[1] = 0xFFLL;
+      }
+      else
+      {
+       	  /* Adest = tmp & FF_FFFF_FFFF_0000_0000h; */
+       	  sll72[0] &= 0xFFFFFFFF00000000LL;
+      	  sll72[1] &= 0xFFLL;
+      }
+      PD_72(sll72);
+      E1;
+      break;
+
+    case RXO_racl:
+      sll72 = GD_72();
+      v = GS();
+      /* tmp = (signed 72bit) Adest << src; */
+      sll72[0] <<= v;
+      sll72[1] <<= v;
+      /* tmp73 = (signed 73bit) tmp + 000_0000_0000_8000_0000h; */
+      sll72[0] += 0x80000000LL;
+      /*if overflow */
+      if((unsigned long long)sll72[0] < 0x80000000ULL)
+      {
+       	  sll72[1]++;
+      }
+      /* if (tmp > (signed 72bit) 00_7FFF_FFFF_0000_0000h)  */
+      if ((unsigned long long)sll72[0] > 0x7FFFFFFF00000000ULL)
+      {
+      	  /* Adest = 00_7FFF_FFFF_0000_0000h;  */
+       	  sll72[0] = 0x7FFFFFFF00000000LL;
+       	  sll72[1] = 0x0;
+      }
+      /* else if (tmp < (signed 72bit) FF_8000_0000_0000_0000h) */
+      else if((sll72[1] & 0x80) &&
+         	  	  (((unsigned long long)sll72[1] < 0xFFFFFFFFFFFFFFFFULL) ||
+           		  (((unsigned long long)sll72[1] == 0xFFFFFFFFFFFFFFFFULL)
+           		  && ((unsigned long long)sll72[0] < 0x8000000000000000ULL))))
+      {
+       	  /* Adest = FF_FFFF_8000_0000_0000h;*/
+       	  sll72[0] = 0xFFFF800000000000LL;
+       	  sll72[1] = 0xFFLL;
+      }
+      else
+      {
+       	  /* Adest = tmp & FF_FFFF_FFFF_0000_0000h; */
+      	  sll72[0] &= 0xFFFFFFFF00000000LL;
+      	  sll72[1] &= 0xFFLL;
+      }
+      PD_72(sll72);
       E1;
       break;
 
@@ -1582,6 +2404,7 @@ decode_opcode (void)
       regs.r_psw = poppc ();
       if (FLAG_PM)
 	regs.r_psw |= FLAGBIT_U;
+      put_reg(libit, 0);
 #ifdef CYCLE_ACCURATE
       regs.fast_return = 0;
       cycles (6);
@@ -1834,7 +2657,7 @@ decode_opcode (void)
 	}
       E1;
       break;
-      
+
     case RXO_sbb:
       MATH_OP (-, ! carry);
       break;
@@ -1871,7 +2694,10 @@ decode_opcode (void)
       if (FLAG_PM
 	  && (v == FLAGBIT_I
 	      || v == FLAGBIT_U))
-	break;
+      {
+        cycles(1);
+        break;
+      }
       regs.r_psw |= v;
       cycles (1);
       break;
@@ -2155,9 +2981,237 @@ decode_opcode (void)
       break;
 
     case RXO_xor:
-      LOGIC_OP (^);
+      if(opcode->op[2].type != RX_Operand_None)
+      {
+        //tprintf ("XOR\n");
+        mb = GS();
+        ma = GS2();
+        v = ma ^ mb;
+		set_sz (v, DSZ());
+        PD(v);
+      }
+      else
+      {
+        LOGIC_OP (^);
+      }
+	  cycles (1);//TODO: update
       break;
 
+	//TODO: ERIX
+  case RXO_dabs:
+    tprintf("DABS\n");
+    dins = GS_DB ();
+    PD_DB (rxdp_abs (dins));
+    //set_osz (dins, 4);
+    E (1);
+    break;
+  case RXO_dadd:
+    DOUBLE_OP2(dadd);
+	E (1);
+	  break;
+	case RXO_dcmp:
+    da = GD_DB();
+    db = GS2_DB();
+    put_reg (dcmr, rxdp_cmp (da, db, GS()));
+    E (1);
+	  break;
+	case RXO_ddiv:
+    DOUBLE_OP2(ddiv);
+	E (1);
+	  break;
+	//TODO: improve this we can reduce the number of instructions
+  case RXO_dmov_1:
+    tprintf("DMOV.D\n");
+    dins = 0;
+    dins |= (long long)GS() << 32;
+    PD_DB(dins);
+    E (1);
+	break;
+  case RXO_dmov_2:
+    tprintf("DMOV.L\n");
+    dins = GD_DB() & 0x00000000ffffffff;
+    dins |= (long long)GS() << 32;
+    PD_DB(dins);
+    E (1);
+	break;
+  case RXO_dmov_3:
+    tprintf("DMOV.L\n");
+    dins = GD_DB() & 0xffffffff00000000;
+    dins |= (long long)GS() & 0x00000000ffffffff;
+    PD_DB(dins);
+    E (1);
+	break;
+  case RXO_dmov_4:
+    tprintf("DMOV.L\n");
+    dins = GS_DB() >> 32;
+    PD((long)dins);
+    E (1);
+	break;
+  case RXO_dmov_5:
+    tprintf("DMOV.L\n");
+    dins = GS_DB() & 0x00000000ffffffff;
+    PD((long)dins);
+    E (1);
+	break;
+  case RXO_dmov_6:
+    tprintf("DMOV.L\n");
+    dins = GS_DB();
+    PD_DB(dins);
+    E (1);
+	break;
+  case RXO_dmov_7:
+  case RXO_dmov_8:
+  case RXO_dmov_9:
+    tprintf("DMOV.D\n");
+    dins = GS_DB();
+    PD_64(dins);
+    E (1);
+	break;
+  case RXO_dmov_10:
+  case RXO_dmov_11:
+  case RXO_dmov_12:
+    tprintf("DMOV.D\n");
+    dins = GS_64();
+    PD_DB(dins);
+    E (1);
+	break;
+  case RXO_dmov_13:
+    tprintf("DMOV.D\n");
+    dins = 0;
+    dins |= (long long)GS_DB() << 32;
+    PD_DB(dins);
+    E (1);
+    break;
+  case RXO_dmov_14:
+    tprintf("DMOV.L\n");
+    dins = GD_DB() & 0x00000000ffffffff;
+    dins |= (long long)GS_DB() << 32;
+    PD_DB(dins);
+    E (1);
+    break;
+  case RXO_dmov_15:
+    tprintf("DMOV.L\n");
+    dins = GD_DB() & 0xffffffff00000000;
+    dins |= (long long)GS_DB() & 0x00000000ffffffff;
+    PD_DB(dins);
+    E (1);
+    break;
+	case RXO_dmul:
+    DOUBLE_OP2 (dmul);
+	E (1);
+	  break;
+	case RXO_dneg:
+    tprintf("DNED\n");
+    dins = GS_DB ();
+    PD_DB (rxdp_neg (dins));
+	E (1);
+	  break;
+	case RXO_dpopm:
+    if (opcode->op[1].reg > opcode->op[0].reg)
+    {
+      regs.r_pc = opcode_pc;
+      DO_RETURN (RX_MAKE_STOPPED (SIGILL));
+    }
+    for (v = opcode->op[1].reg; v <= opcode->op[0].reg; v++)
+    {
+      put_reg_double (v, pop_double ());
+    }
+	E (1);
+	  break;
+  case RXO_dpopm_2:
+    if (opcode->op[1].reg > opcode->op[0].reg)
+    {
+      regs.r_pc = opcode_pc;
+      DO_RETURN (RX_MAKE_STOPPED (SIGILL));
+    }
+    for (v = opcode->op[1].reg; v <= opcode->op[0].reg; v++)
+    {
+      put_reg (v + dpsw, pop());
+    }
+	E (1);
+	  break;
+  case RXO_dpushm:
+    if (opcode->op[1].reg > opcode->op[0].reg)
+    {
+      regs.r_pc = opcode_pc;
+      return RX_MAKE_STOPPED (SIGILL);
+    }
+    for (v = opcode->op[0].reg; v >= opcode->op[1].reg; v--)
+    {
+      push_double (get_reg_double (v));
+    }
+	E (1);
+	  break;
+  case RXO_dpushm_2:
+    if (opcode->op[1].reg > opcode->op[0].reg)
+    {
+      regs.r_pc = opcode_pc;
+      return RX_MAKE_STOPPED (SIGILL);
+    }
+    for (v = opcode->op[0].reg; v >= opcode->op[1].reg; v--)
+    {
+      push (get_reg (v + dpsw));
+    }
+	E (1);
+	  break;
+	case RXO_dround:
+    dins = GS_DB ();
+    PD_DB (rxdp_round (dins, regs.r_dpsw & DPSWBITS_DRM));
+	E (1);
+	  break;
+	case RXO_dsqrt:
+    dins = GS_DB ();
+    PD_DB (rxdp_dsqrt (dins));
+	E (1);
+	  break;
+	case RXO_dsub:
+    DOUBLE_OP2(dsub);
+	E (1);
+	  break;
+	case RXO_dtof:
+    dins = GS_DB();
+    PD_DB (rxdp_dtof (dins,  regs.r_dpsw & DPSWBITS_DRM));
+	E (1);
+	  break;
+	case RXO_dtoi:
+    dins = GS_DB();
+    PD_DB  (rxdp_dtoi (dins, regs.r_dpsw & DPSWBITS_DRM));
+	E (1);
+	  break;
+	case RXO_dtou:
+    dins = GS_DB();
+    PD_DB (rxdp_dtou (dins, regs.r_dpsw & DPSWBITS_DRM));
+	E (1);
+	  break;
+	case RXO_ftod:
+    uma = GS ();
+    PD_DB (rxdp_ftod (uma));
+	E (1);
+	  break;
+	case RXO_itod:
+    uma = GS ();
+    PD_DB (rxdp_itod (uma));
+	E (1);
+	  break;
+  case RXO_mvfdc:
+	PD(get_reg(opcode->op[1].reg + dpsw));
+	E (1);
+	  break;
+	case RXO_mvfdr:
+	/* write Z flag */
+	regs.r_psw &= ~FLAGBIT_Z;
+	regs.r_psw |= (get_reg(dcmr) & 1) << 1;
+	E (1);
+	  break;
+	case RXO_mvtdc:
+    put_reg(opcode->op[0].reg + dpsw, GS ());
+	E (1);
+	  break;
+	case RXO_utod:
+    uma = GS ();
+    PD_DB (rxdp_utod (uma));
+	E (1);
+	  break;
     default:
       EXCEPTION (EX_UNDEFINED);
     }

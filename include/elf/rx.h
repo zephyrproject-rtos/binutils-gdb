@@ -123,8 +123,11 @@ END_RELOC_NUMBERS (R_RX_max)
 #define E_FLAG_RX_SINSNS_YES		(1 << 7) /* Set if string instructions are used in the binary.  */
 #define E_FLAG_RX_SINSNS_NO		0        /* Bit-5 if this binary must not be linked with a string instruction using binary.  */
 #define E_FLAG_RX_SINSNS_MASK		(3 << 6) /* Mask of bits used to determine string instruction use.  */
-#define E_FLAG_RX_V2			(1 << 8) /* RX v2 instructions */
-#define E_FLAG_RX_V3			(1 << 9) /* RX v3 instructions */
+#define E_FLAG_RX_V1				(1 << 4) /* RX v1 instructions  */
+#define E_FLAG_RX_V2				(1 << 5) /* RX v2 instructions  */
+#define E_FLAG_RX_V3				(1 << 8) /* RX v3 instructions  */
+#define E_FLAG_RX_V3_DFPU        (1 << 9) /* instructions with DFPU (only for RX v3)*/
+#define E_FLAG_RX_V_MASK		(19 << 4) /* Mask of bits used to determine ISA */
 
 /* These define the addend field of R_RX_RH_RELAX relocations.  */
 #define	RX_RELAXA_IMM6	0x00000010	/* Imm8/16/24/32 at bit offset 6.  */
@@ -133,7 +136,7 @@ END_RELOC_NUMBERS (R_RX_max)
 #define	RX_RELAXA_DSP6	0x00000080	/* Dsp0/8/16 at bit offset 6.  */
 #define	RX_RELAXA_DSP14	0x00000100	/* Dsp0/8/16 at bit offset 14.  */
 #define	RX_RELAXA_BRA	0x00000200	/* Any type of branch (must be decoded).  */
-#define RX_RELAXA_RNUM	0x0000000f	/* Number of associated relocations.  */
+#define  RX_RELAXA_RNUM	0x0000000f	/* Number of associated relocations.  */
 /* These mark the place where alignment is requested, and the place where the filler bytes end.  */
 #define	RX_RELAXA_ALIGN	0x10000000	/* Start alignment; the remaining bits are the alignment value.  */
 #define	RX_RELAXA_ELIGN	0x20000000	/* End alignment; the remaining bits are the alignment value.  */

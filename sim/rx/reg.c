@@ -29,6 +29,8 @@
 #include "bfd.h"
 #include "trace.h"
 
+#define tprintf if (trace) printf
+
 int verbose = 0;
 int trace = 0;
 int enable_counting = 0;
@@ -49,12 +51,19 @@ char *reg_names[] = {
   /* general registers */
   "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",
   "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
+  "RES", "RES", "RES", "RES", "RES", "RES", "RES", "RES",
+  "RES", "RES", "RES", "RES", "RES", "RES", "RES", "RES",
   /* control register */
   "psw", "pc", "usp", "fpsw", "RES", "RES", "RES", "RES",
-  "bpsw", "bpc", "isp", "fintv", "intb", "RES", "RES", "RES",
+  "bpsw", "bpc", "isp", "fintv", "intb", "extb", "RES", "RES",
   "RES", "RES", "RES", "RES", "RES", "RES", "RES", "RES",
   "RES", "RES", "RES", "RES", "RES", "RES", "RES", "RES",
-  "temp", "acc", "acchi", "accmi", "acclo"
+  "temp", "acc0", "acc1", "acc0hi", "acc0mi", "acc0lo",
+  "acc1hi", "acc1mi", "acc1lo",
+  /* double registers */
+  "dr0", "dr1", "dr2", "dr3", "dr4", "dr5", "dr6", "dr7",
+  "dr8", "dr9", "dr10", "dr11", "dr12", "dr13", "dr14", "dr15",
+  "dpsw", "dcmr", "decnt", "depc"
 };
 
 unsigned int b2mask[] = { 0, 0xff, 0xffff, 0xffffff, 0xffffffff };
@@ -69,6 +78,10 @@ init_regs (void)
 {
   memset (&regs, 0, sizeof (regs));
   memset (&oldregs, 0, sizeof (oldregs));
+
+  // DPSW init, all bits 0 except for DDN bit
+  tprintf("Initializing DPSW...\nSetting DDN bit to 1...\n");
+  regs.r_dpsw |= DPSWBITS_DDN;
 
 #ifdef CYCLE_ACCURATE
   regs.rt = -1;
@@ -107,12 +120,30 @@ get_reg_i (int id)
       return regs.r_pc;
     case r_temp_idx:
       return regs.r_temp;
-    case acchi:
-      return (SI)(regs.r_acc >> 32);
-    case accmi:
-      return (SI)(regs.r_acc >> 16);
-    case acclo:
-      return (SI)regs.r_acc;
+    case acc0hi:
+      return (SI)(regs.r_acc0[0] >> 32);
+    case acc0mi:
+      return (SI)(regs.r_acc0[0] >> 16);
+    case acc0lo:
+      return (SI)regs.r_acc0[0];
+    case acc1hi:
+      return (SI)(regs.r_acc1[0] >> 32);
+    case acc1mi:
+      return (SI)(regs.r_acc1[0] >> 16);
+    case acc1lo:
+      return (SI)regs.r_acc1[0];
+    case extb:
+      return regs.r_extb;
+    case dpsw:
+      return regs.r_dpsw;
+    case dcmr:
+      return regs.r_dcmr;
+    case decnt:
+      return regs.r_decnt;
+    case depc:
+      return regs.r_depc;
+    case libit:
+      return regs.bit_li;
     }
   abort();
 }
@@ -127,23 +158,42 @@ get_reg (int id)
 }
 
 static unsigned long long
-get_reg64_i (int id)
+get_reg_double_i (int id)
+{
+  if (id >= 0 && id < 16)
+    return regs.dr[id];
+  abort ();
+}
+
+unsigned long long
+get_reg_double (int id)
+{
+  unsigned long long rv = get_reg_double_i (id);
+  if (trace > ((id != pc) ? 0 : 1))
+    printf ("get_reg_double (%s) = %016llx\n", reg_names[id], rv);
+  return rv;
+}
+
+static unsigned long long *
+get_reg72_i (int id)
 {
   switch (id)
     {
-    case acc64:
-      return regs.r_acc;
+    case acc0:
+      return regs.r_acc0;
+    case acc1:
+      return regs.r_acc1;
     default:
       abort ();
     }
 }
 
-unsigned long long
-get_reg64 (int id)
+unsigned long long *
+get_reg72 (int id)
 {
-  unsigned long long rv = get_reg64_i (id);
+  unsigned long long * rv = get_reg72_i (id);
   if (trace > ((id != pc && id != sp) ? 0 : 1))
-    printf ("get_reg (%s) = %016llx\n", reg_names[id], rv);
+    printf ("get_reg (%s) = %016llx%016llx\n", reg_names[id], *(rv + 1), *rv);
   return rv;
 }
 
@@ -208,14 +258,41 @@ put_reg (int id, unsigned int v)
       regs.r_pc = v;
       break;
 
-    case acchi:
-      regs.r_acc = (regs.r_acc & 0xffffffffULL) | ((DI)v << 32);
+    case acc0hi:
+      regs.r_acc0[0] = (regs.r_acc0[0] & 0xffffffffULL) | ((DI)v << 32);
       break;
-    case accmi:
-      regs.r_acc = (regs.r_acc & ~0xffffffff0000ULL) | ((DI)v << 16);
+    case acc0mi:
+      regs.r_acc0[0] = (regs.r_acc0[0] & ~0xffffffff0000ULL) | ((DI)v << 16);
       break;
-    case acclo:
-      regs.r_acc = (regs.r_acc & ~0xffffffffULL) | ((DI)v);
+    case acc0lo:
+      regs.r_acc0[0] = (regs.r_acc0[0] & ~0xffffffffULL) | ((DI)v);
+      break;
+    case acc1hi:
+      regs.r_acc1[0] = (regs.r_acc1[0] & 0xffffffffULL) | ((DI)v << 32);
+      break;
+    case acc1mi:
+      regs.r_acc1[0] = (regs.r_acc1[0] & ~0xffffffff0000ULL) | ((DI)v << 16);
+      break;
+    case acc1lo:
+      regs.r_acc1[0] = (regs.r_acc1[0] & ~0xffffffffULL) | ((DI)v);
+      break;
+    case extb:
+      regs.r_extb = v;
+      break;
+    case dpsw:
+      regs.r_dpsw = v;
+      break;
+    case dcmr:
+      regs.r_dcmr = v;
+      break;
+    case decnt:
+      regs.r_decnt = v;
+      break;
+    case depc:
+      regs.r_depc = v;
+      break;
+    case libit:
+      regs.bit_li = v & 1;
       break;
 
     case 0: /* Stack pointer is "in" R0.  */
@@ -254,7 +331,7 @@ put_reg (int id, unsigned int v)
       }
 
     default:
-      if (id >= 1 && id <= 15)
+      if (id >= 1 || id <= 15)
 	regs.r[id] = v;
       else
 	abort ();
@@ -262,19 +339,51 @@ put_reg (int id, unsigned int v)
 }
 
 void
-put_reg64 (int id, unsigned long long v)
+put_reg72 (int id, unsigned long long* v)
 {
-  if (trace > ((id != pc) ? 0 : 1))
-    printf ("put_reg (%s) = %016llx\n", reg_names[id], v);
 
   switch (id)
     {
-    case acc64:
-      regs.r_acc = v;
+    case acc0:
+      regs.r_acc0[0] = *v;
+      regs.r_acc0[1] = (*(v + 1)) & 0xFF;
+      /* sign extend the value if necessary */
+      if(regs.r_acc0[1] & 0x80)
+      {
+        regs.r_acc0[1] |= 0xFFFFFFFFFFFFFF00;
+      }
+      if (trace > ((id != pc) ? 0 : 1))
+      {
+        printf ("put_reg (%s) = %016llx%016llx\n", reg_names[id], regs.r_acc0[1], regs.r_acc0[0]);
+      }
+      break;
+    case acc1:
+      regs.r_acc1[0] = *v;
+      regs.r_acc1[1] = (*(v + 1)) & 0xFF;
+      /* sign extend the value if necessary */
+      if(regs.r_acc1[1] & 0x80)
+      {
+        regs.r_acc1[1] |= 0xFFFFFFFFFFFFFF00;
+      }
+      if (trace > ((id != pc) ? 0 : 1))
+      {
+        printf ("put_reg (%s) = %016llx%016llx\n", reg_names[id], regs.r_acc1[1], regs.r_acc1[0]);
+      }
       break;
     default:
       abort ();
     }
+}
+
+void
+put_reg_double (int id, unsigned long long v)
+{
+  if (trace > ((id != pc) ? 0 : 1))
+    printf ("put_reg_double (%s) = %016llx\n", reg_names[id], v);
+  if (id >= 0 && id < 16)
+        regs.dr[id] = v;
+  else
+		abort ();
 }
 
 int
@@ -546,13 +655,23 @@ trace_register_changes (void)
       oldregs.r_fpsw = regs.r_fpsw;
     }
 
-  if (oldregs.r_acc != regs.r_acc)
+  for( i = 0; i < 1; i++)
+  {
+    if (oldregs.r_acc0[i] != regs.r_acc0[i])
     {
-      if (tag) { printf ("%s", tag); tag = 0; }
-      printf("  acc %016" PRIx64 ":", oldregs.r_acc);
-      printf("%016" PRIx64, regs.r_acc);
-      oldregs.r_acc = regs.r_acc;
+      if (tag) { printf (tag); tag = 0; }
+      printf("  acc0 %016llx:", oldregs.r_acc0[i]);
+      printf("%016llx", regs.r_acc0[i]);
+      oldregs.r_acc0[i] = regs.r_acc0[i];
     }
+    if (oldregs.r_acc1[i] != regs.r_acc1[i])
+    {
+      if (tag) { printf (tag); tag = 0; }
+      printf("  acc1 %016llx:", oldregs.r_acc1[i]);
+      printf("%016llx", regs.r_acc1[i]);
+      oldregs.r_acc1[i] = regs.r_acc1[i];
+    }
+  }
 
   if (tag == 0)
     printf ("\033[0m\n");

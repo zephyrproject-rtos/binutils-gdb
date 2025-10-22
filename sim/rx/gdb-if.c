@@ -36,6 +36,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "gdb/signals.h"
 #include "sim/sim-rx.h"
 
+#include "bfd/elf-bfd.h"
+#include "elf/rx.h"
+
 #include "cpu.h"
 #include "mem.h"
 #include "load.h"
@@ -59,12 +62,31 @@ static struct sim_state the_minisim = {
 };
 
 static int rx_sim_is_open;
+unsigned long rx_machine = bfd_mach_rx;
+int sim_rx_v2 = 0;
+int sim_rx_v3 = 0;
 
 SIM_DESC
 sim_open (SIM_OPEN_KIND kind,
 	  struct host_callback_struct *callback,
 	  struct bfd *abfd, char * const *argv)
 {
+int index = 0;
+while(argv[index] != NULL)
+{
+      if(strcmp(argv[index], "-rx-force-isa=v2") == 0)
+      {
+              sim_rx_v2 = 1;
+              break;
+      }
+      if(strcmp(argv[index], "-rx-force-isa=v3") == 0)
+      {
+              sim_rx_v3 = 1;
+              break;
+      }
+      index++;
+}
+
   if (rx_sim_is_open)
     fprintf (stderr, "rx minisim: re-opened sim\n");
 
@@ -156,7 +178,7 @@ build_swap_list (struct bfd *abfd)
 {
   asection *s;
   free_swap_list ();
-  
+
   /* Nothing to do when in little endian mode.  */
   if (!rx_big_endian)
     return;
@@ -171,7 +193,7 @@ build_swap_list (struct bfd *abfd)
 	  size = bfd_section_size (s);
 	  if (size <= 0)
 	    continue;
-	  
+
 	  sl = malloc (sizeof (struct swap_list));
 	  assert (sl != NULL);
 	  sl->next = swap_list;
@@ -198,6 +220,8 @@ addr_in_swap_list (bfd_vma addr)
 SIM_RC
 sim_load (SIM_DESC sd, const char *prog, struct bfd *abfd, int from_tty)
 {
+  int elf_flags;
+
   check_desc (sd);
 
   if (!abfd)
@@ -207,6 +231,44 @@ sim_load (SIM_DESC sd, const char *prog, struct bfd *abfd, int from_tty)
 
   rx_load (abfd, get_callbacks ());
   build_swap_list (abfd);
+
+  /* Extract the elf_flags if available.  */
+  if ((abfd != NULL) && (bfd_get_flavour (abfd) == bfd_target_elf_flavour))
+  {
+    elf_flags = elf_elfheader (abfd)->e_flags;
+  }
+  else
+  {
+    elf_flags = 0;
+  }
+
+  if (((elf_flags & E_FLAG_RX_V_MASK) == E_FLAG_RX_V3)
+      && (elf_flags & E_FLAG_RX_V3_DFPU))
+  {
+    rx_machine = bfd_mach_rx_v3_dfpu;
+  }
+  else if ((elf_flags & E_FLAG_RX_V_MASK) == E_FLAG_RX_V3)
+  {
+    rx_machine = bfd_mach_rx_v3;
+  }
+  else if ((elf_flags & E_FLAG_RX_V_MASK) == E_FLAG_RX_V2)
+  {
+    rx_machine = bfd_mach_rx_v2;
+  }
+  else
+  {
+    rx_machine = bfd_mach_rx;
+  }
+
+  /* force rxv2 if necessary */
+  if(sim_rx_v2)
+  {
+    rx_machine = bfd_mach_rx_v2;
+  }
+  if(sim_rx_v3)
+  {
+    rx_machine = bfd_mach_rx_v3;
+  }
 
   return SIM_RC_OK;
 }
@@ -234,9 +296,6 @@ sim_read (SIM_DESC sd, uint64_t addr, void *buffer, uint64_t length)
 
   check_desc (sd);
 
-  if (addr == 0)
-    return 0;
-
   execution_error_clear_last_error ();
 
   for (i = 0; i < length; i++)
@@ -244,6 +303,13 @@ sim_read (SIM_DESC sd, uint64_t addr, void *buffer, uint64_t length)
       bfd_vma vma = addr + i;
       int do_swap = addr_in_swap_list (vma);
       data[i] = mem_get_qi (vma ^ (do_swap ? 3 : 0));
+
+      /* If error, attempt to fetch the memory byte a second time.  */
+      if (execution_error_get_last_error () != SIM_ERR_NONE)
+  {
+    execution_error_clear_last_error ();
+    data[i] = mem_get_qi (addr ^ (do_swap ? 3 : 0));
+  }
 
       if (execution_error_get_last_error () != SIM_ERR_NONE)
 	return i;
@@ -385,6 +451,54 @@ reg_size (enum sim_rx_regnum regno)
     case sim_rx_r15_regnum:
       size = sizeof (regs.r[15]);
       break;
+    case sim_rx_dr0_regnum:
+      size = sizeof (regs.dr[0]);
+      break;
+    case sim_rx_dr1_regnum:
+      size = sizeof (regs.dr[1]);
+      break;
+    case sim_rx_dr2_regnum:
+      size = sizeof (regs.dr[2]);
+      break;
+    case sim_rx_dr3_regnum:
+      size = sizeof (regs.dr[3]);
+      break;
+    case sim_rx_dr4_regnum:
+      size = sizeof (regs.dr[4]);
+      break;
+    case sim_rx_dr5_regnum:
+      size = sizeof (regs.dr[5]);
+      break;
+    case sim_rx_dr6_regnum:
+      size = sizeof (regs.dr[6]);
+      break;
+    case sim_rx_dr7_regnum:
+      size = sizeof (regs.dr[7]);
+      break;
+    case sim_rx_dr8_regnum:
+      size = sizeof (regs.dr[8]);
+      break;
+    case sim_rx_dr9_regnum:
+      size = sizeof (regs.dr[9]);
+      break;
+    case sim_rx_dr10_regnum:
+      size = sizeof (regs.dr[10]);
+      break;
+    case sim_rx_dr11_regnum:
+      size = sizeof (regs.dr[11]);
+      break;
+    case sim_rx_dr12_regnum:
+      size = sizeof (regs.dr[12]);
+      break;
+    case sim_rx_dr13_regnum:
+      size = sizeof (regs.dr[13]);
+      break;
+    case sim_rx_dr14_regnum:
+      size = sizeof (regs.dr[14]);
+      break;
+    case sim_rx_dr15_regnum:
+      size = sizeof (regs.dr[15]);
+      break;
     case sim_rx_isp_regnum:
       size = sizeof (regs.r_isp);
       break;
@@ -412,9 +526,36 @@ reg_size (enum sim_rx_regnum regno)
     case sim_rx_fpsw_regnum:
       size = sizeof (regs.r_fpsw);
       break;
-    case sim_rx_acc_regnum:
-      size = sizeof (regs.r_acc);
+    case sim_rx_dpsw_regnum:
+      size = sizeof (regs.r_dpsw);
       break;
+    case sim_rx_dcmr_regnum:
+      size = sizeof (regs.r_dcmr);
+      break;
+    case sim_rx_decnt_regnum:
+      size = sizeof (regs.r_decnt);
+      break;
+    case sim_rx_depc_regnum:
+      size = sizeof (regs.r_depc);
+      break;
+     /* ACC0 from RXV2 will be ACC from RX */
+   case sim_rx_acc0_regnum:
+   if(rx_machine == bfd_mach_rx)
+   {
+      size = sizeof(unsigned long long);
+   }
+   else
+   {
+      size = 2 * sizeof(unsigned long long);
+   }
+   break;
+ case sim_rx_acc1_regnum:
+   size = 2 * sizeof(unsigned long long);
+   break;
+ case sim_rx_extb_regnum:
+   size = sizeof(regs.r_extb);
+   break;
+
     default:
       size = 0;
       break;
@@ -426,7 +567,8 @@ int
 sim_fetch_register (SIM_DESC sd, int regno, void *buf, int length)
 {
   size_t size;
-  DI val;
+  DI val = 0;
+  unsigned long long *acc72val = NULL;
 
   check_desc (sd);
 
@@ -488,6 +630,54 @@ sim_fetch_register (SIM_DESC sd, int regno, void *buf, int length)
     case sim_rx_r15_regnum:
       val = get_reg (15);
       break;
+    case sim_rx_dr0_regnum:
+      val = get_reg_double (0);
+      break;
+    case sim_rx_dr1_regnum:
+      val = get_reg_double (1);
+      break;
+    case sim_rx_dr2_regnum:
+      val = get_reg_double (2);
+      break;
+    case sim_rx_dr3_regnum:
+      val = get_reg_double (3);
+      break;
+    case sim_rx_dr4_regnum:
+      val = get_reg_double (4);
+      break;
+    case sim_rx_dr5_regnum:
+      val = get_reg_double (5);
+      break;
+    case sim_rx_dr6_regnum:
+      val = get_reg_double (6);
+      break;
+    case sim_rx_dr7_regnum:
+      val = get_reg_double (7);
+      break;
+    case sim_rx_dr8_regnum:
+      val = get_reg_double (8);
+      break;
+    case sim_rx_dr9_regnum:
+      val = get_reg_double (9);
+      break;
+    case sim_rx_dr10_regnum:
+      val = get_reg_double (10);
+      break;
+    case sim_rx_dr11_regnum:
+      val = get_reg_double (11);
+      break;
+    case sim_rx_dr12_regnum:
+      val = get_reg_double (12);
+      break;
+    case sim_rx_dr13_regnum:
+      val = get_reg_double (13);
+      break;
+    case sim_rx_dr14_regnum:
+      val = get_reg_double (14);
+      break;
+    case sim_rx_dr15_regnum:
+      val = get_reg_double (15);
+      break;
     case sim_rx_isp_regnum:
       val = get_reg (isp);
       break;
@@ -515,15 +705,60 @@ sim_fetch_register (SIM_DESC sd, int regno, void *buf, int length)
     case sim_rx_fpsw_regnum:
       val = get_reg (fpsw);
       break;
-    case sim_rx_acc_regnum:
-      val = ((DI) get_reg (acchi) << 32) | get_reg (acclo);
+    case sim_rx_dpsw_regnum:
+      val = get_reg (dpsw);
       break;
+    case sim_rx_dcmr_regnum:
+      val = get_reg (dcmr);
+      break;
+    case sim_rx_decnt_regnum:
+      val = get_reg (decnt);
+      break;
+    case sim_rx_depc_regnum:
+      val = get_reg (depc);
+      break;
+     /* ACC0 from RXV2 will be ACC from RX */
+    case sim_rx_acc0_regnum:
+     if(rx_machine == bfd_mach_rx)
+     {
+             acc72val = get_reg72(acc0);
+             val = acc72val[0];
+     }
+     else
+     {
+             acc72val = get_reg72(acc0);
+     }
+     break;
+    case sim_rx_acc1_regnum:
+     acc72val = get_reg72(acc1);
+     break;
+    case sim_rx_extb_regnum:
+     val = get_reg (extb);
+     break;
+
     default:
       fprintf (stderr, "rx minisim: unrecognized register number: %d\n",
 	       regno);
       return -1;
     }
 
+  if(length > sizeof(DI))
+  {
+    if (rx_big_endian)
+    {
+      put_be (buf, length/2, acc72val[1]);
+      put_be (buf + sizeof(unsigned long long), length/2, acc72val[0]);
+    }
+    else
+    {
+      put_le (buf, length/2, acc72val[0]);
+      put_le (buf + sizeof(unsigned long long), length/2, acc72val[1]);
+    }
+
+    return 2 * sizeof(unsigned long long);
+  }
+  else
+  {
   if (rx_big_endian)
     put_be (buf, length, val);
   else
@@ -531,13 +766,14 @@ sim_fetch_register (SIM_DESC sd, int regno, void *buf, int length)
 
   return size;
 }
+}
 
 int
 sim_store_register (SIM_DESC sd, int regno, const void *buf, int length)
 {
   size_t size;
-  DI val;
-
+  DI val = 0;
+  unsigned long long acc72val[2];
   check_desc (sd);
 
   if (!check_regno (regno))
@@ -548,10 +784,26 @@ sim_store_register (SIM_DESC sd, int regno, const void *buf, int length)
   if (length != size)
     return -1;
 
+  if(size > sizeof(val))
+  {
+    if (rx_big_endian)
+    {
+      acc72val[0] =  get_be (buf + sizeof(unsigned long long), length/2);
+      acc72val[1] =  get_be (buf, length/2);
+    }
+    else
+    {
+      acc72val[0] =  get_le (buf, length/2);
+      acc72val[1] =  get_le (buf + sizeof(unsigned long long), length/2);
+    }
+  }
+  else
+  {
   if (rx_big_endian)
     val = get_be (buf, length);
   else
     val = get_le (buf, length);
+  }
 
   switch (regno)
     {
@@ -603,6 +855,54 @@ sim_store_register (SIM_DESC sd, int regno, const void *buf, int length)
     case sim_rx_r15_regnum:
       put_reg (15, val);
       break;
+    case sim_rx_dr0_regnum:
+      put_reg_double (0, val);
+      break;
+    case sim_rx_dr1_regnum:
+      put_reg_double (1, val);
+      break;
+    case sim_rx_dr2_regnum:
+      put_reg_double (2, val);
+      break;
+    case sim_rx_dr3_regnum:
+      put_reg_double (3, val);
+      break;
+    case sim_rx_dr4_regnum:
+      put_reg_double (4, val);
+      break;
+    case sim_rx_dr5_regnum:
+      put_reg_double (5, val);
+      break;
+    case sim_rx_dr6_regnum:
+      put_reg_double (6, val);
+      break;
+    case sim_rx_dr7_regnum:
+      put_reg_double (7, val);
+      break;
+    case sim_rx_dr8_regnum:
+      put_reg_double (8, val);
+      break;
+    case sim_rx_dr9_regnum:
+      put_reg_double (9, val);
+      break;
+    case sim_rx_dr10_regnum:
+      put_reg_double (10, val);
+      break;
+    case sim_rx_dr11_regnum:
+      put_reg_double (11, val);
+      break;
+    case sim_rx_dr12_regnum:
+      put_reg_double (12, val);
+      break;
+    case sim_rx_dr13_regnum:
+      put_reg_double (13, val);
+      break;
+    case sim_rx_dr14_regnum:
+      put_reg_double (14, val);
+      break;
+    case sim_rx_dr15_regnum:
+      put_reg_double (15, val);
+      break;
     case sim_rx_isp_regnum:
       put_reg (isp, val);
       break;
@@ -630,9 +930,36 @@ sim_store_register (SIM_DESC sd, int regno, const void *buf, int length)
     case sim_rx_fpsw_regnum:
       put_reg (fpsw, val);
       break;
-    case sim_rx_acc_regnum:
-      put_reg (acclo, val & 0xffffffff);
-      put_reg (acchi, (val >> 32) & 0xffffffff);
+    case sim_rx_dpsw_regnum:
+      put_reg (dpsw, val);
+      break;
+    case sim_rx_dcmr_regnum:
+      put_reg (dcmr, val);
+      break;
+    case sim_rx_decnt_regnum:
+      put_reg (decnt, val);
+      break;
+    case sim_rx_depc_regnum:
+      put_reg (depc, val);
+      break;
+    /* ACC0 from RXV2 will be ACC from RX */
+    case sim_rx_acc0_regnum:
+      if(rx_machine == bfd_mach_rx)
+      {
+        acc72val[0] = val;
+        acc72val[1] = 0;
+        put_reg72(acc0, acc72val);
+      }
+      else
+      {
+        put_reg72(acc0, acc72val);
+      }
+      break;
+    case sim_rx_acc1_regnum:
+      put_reg72(acc1, acc72val);
+      break;
+    case sim_rx_extb_regnum:
+      put_reg(extb, val);
       break;
     default:
       fprintf (stderr, "rx minisim: unrecognized register number: %d\n",
@@ -805,13 +1132,35 @@ sim_do_command (SIM_DESC sd, const char *cmd)
 
   check_desc (sd);
 
-  cmd = arg = "";
-  if (argv != NULL)
+  if (cmd == NULL)
     {
-      if (argv[0] != NULL)
-	cmd = argv[0];
-      if (argv[1] != NULL)
-	arg = argv[1];
+      cmd = "";
+      arg = "";
+    }
+  else
+    {
+      char *p = cmd;
+
+      /* Skip leading whitespace.  */
+      while (isspace (*p))
+  p++;
+
+      /* Find the extent of the command word.  */
+      for (p = cmd; *p; p++)
+  if (isspace (*p))
+    break;
+
+      /* Null-terminate the command word, and record the start of any
+   further arguments.  */
+      if (*p)
+  {
+    *p = '\0';
+    arg = p + 1;
+    while (isspace (*arg))
+      arg++;
+  }
+      else
+  arg = p;
     }
 
   if (strcmp (cmd, "trace") == 0)
