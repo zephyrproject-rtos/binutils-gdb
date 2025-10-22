@@ -454,6 +454,7 @@ DESCRIPTION
 .#define bfd_mach_rx		0x75
 .#define bfd_mach_rx_v2		0x76
 .#define bfd_mach_rx_v3		0x77
+.#define bfd_mach_rx_v3_dfpu  0x78
 .  bfd_arch_s390,      {* IBM s390.  *}
 .#define bfd_mach_s390_31	31
 .#define bfd_mach_s390_64	64
@@ -536,6 +537,10 @@ DESCRIPTION
 .#define bfd_mach_aarch64_8R	1
 .#define bfd_mach_aarch64_ilp32	32
 .#define bfd_mach_aarch64_llp64 64
+.  bfd_arch_nios2,     {* Nios II.  *}
+.#define bfd_mach_nios2		0
+.#define bfd_mach_nios2r1	1
+.#define bfd_mach_nios2r2	2
 .  bfd_arch_visium,    {* Visium.  *}
 .#define bfd_mach_visium	1
 .  bfd_arch_wasm32,    {* WebAssembly.  *}
@@ -677,6 +682,7 @@ extern const bfd_arch_info_type bfd_msp430_arch;
 extern const bfd_arch_info_type bfd_mt_arch;
 extern const bfd_arch_info_type bfd_nds32_arch;
 extern const bfd_arch_info_type bfd_nfp_arch;
+extern const bfd_arch_info_type bfd_nios2_arch;
 extern const bfd_arch_info_type bfd_ns32k_arch;
 extern const bfd_arch_info_type bfd_or1k_arch;
 extern const bfd_arch_info_type bfd_pdp11_arch;
@@ -765,6 +771,7 @@ static const bfd_arch_info_type * const bfd_archures_list[] =
     &bfd_mt_arch,
     &bfd_nds32_arch,
     &bfd_nfp_arch,
+    &bfd_nios2_arch,
     &bfd_ns32k_arch,
     &bfd_or1k_arch,
     &bfd_pdp11_arch,

@@ -1,6 +1,6 @@
 /* sim-rx.h --- interface between RX simulator and GDB.
 
-   Copyright (C) 2008-2024 Free Software Foundation, Inc.
+   Copyright (C) 2008-2025 Free Software Foundation, Inc.
 
    Contributed by Red Hat.
 
@@ -49,7 +49,29 @@ enum sim_rx_regnum
     sim_rx_bpc_regnum,
     sim_rx_fintv_regnum,
     sim_rx_fpsw_regnum,
-    sim_rx_acc_regnum,
+    sim_rx_acc0_regnum,
+    sim_rx_acc1_regnum,
+    sim_rx_extb_regnum,
+    sim_rx_dr0_regnum,
+    sim_rx_dr1_regnum,
+    sim_rx_dr2_regnum,
+    sim_rx_dr3_regnum,
+    sim_rx_dr4_regnum,
+    sim_rx_dr5_regnum,
+    sim_rx_dr6_regnum,
+    sim_rx_dr7_regnum,
+    sim_rx_dr8_regnum,
+    sim_rx_dr9_regnum,
+    sim_rx_dr10_regnum,
+    sim_rx_dr11_regnum,
+    sim_rx_dr12_regnum,
+    sim_rx_dr13_regnum,
+    sim_rx_dr14_regnum,
+    sim_rx_dr15_regnum,
+    sim_rx_dpsw_regnum,
+    sim_rx_dcmr_regnum,
+    sim_rx_decnt_regnum,
+    sim_rx_depc_regnum,
     sim_rx_num_regs
   };
 

@@ -22,6 +22,7 @@
 /* The RX decoder in libopcodes is used by the simulator, gdb's
    analyzer, and the disassembler.  Given an opcode data source,
    it decodes the next opcode into the following structures.  */
+#include "dis-asm.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -48,11 +49,16 @@ typedef enum
   RX_Operand_None,
   RX_Operand_Immediate,	/* #addend */
   RX_Operand_Register,	/* Rn */
+  RX_Operand_DR_Register, /* DRn */
+  RX_Operand_DRH_Register, /* DRHn */
+  RX_Operand_DRL_Register, /* DRLn */
+  RX_Operand_DCTRL_Register, //TODO: split more to be able to display flags like PSW registers
   RX_Operand_Indirect,	/* [Rn + addend] */
   RX_Operand_Zero_Indirect,/* [Rn] */
   RX_Operand_Postinc,	/* [Rn+] */
   RX_Operand_Predec,	/* [-Rn] */
   RX_Operand_Condition,	/* eq, gtu, etc */
+  RX_Operand_DFPU_Condition,  /* eq, le, etc */
   RX_Operand_Flag,	/* [UIOSZC] */
   RX_Operand_TwoReg,	/* [Rn + scale*R2] */
   RX_Operand_DoubleReg,	/* DRn */
@@ -201,8 +207,25 @@ typedef enum
   RXO_dadd,
   RXO_dcmp,
   RXO_ddiv,
+  RXO_dmov_1,
+  RXO_dmov_2,
+  RXO_dmov_3,
+  RXO_dmov_4,
+  RXO_dmov_5,
+  RXO_dmov_6,
+  RXO_dmov_7,
+  RXO_dmov_8,
+  RXO_dmov_9,
+  RXO_dmov_10,
+  RXO_dmov_11,
+  RXO_dmov_12,
+  RXO_dmov_13,
+  RXO_dmov_14,
+  RXO_dmov_15,
   RXO_dmul,
   RXO_dneg,
+  RXO_dpopm_2,
+  RXO_dpushm_2,
   RXO_dround,
   RXO_dsqrt,
   RXO_dsub,
@@ -236,6 +259,12 @@ typedef enum
 
 typedef struct
 {
+  bfd_vma addr;
+  disassemble_info * dis;
+} RX_Data;
+
+typedef struct
+{
   RX_Operand_Type  type;
   int              reg;
   int              addend;
@@ -250,7 +279,7 @@ typedef struct
   char *            syntax;
   RX_Size           size;
   /* By convention, these are destination, source1, source2.  */
-  RX_Opcode_Operand op[3];
+  RX_Opcode_Operand op[5];
 
   /* The logic here is:
      newflags = (oldflags & ~(int)flags_0) | flags_1 | (op_flags & flags_s)
@@ -273,7 +302,7 @@ typedef struct
    Register numbers 0..15 are general registers.  16..31 are control
    registers.  32..47 are condition codes.  */
 
-int rx_decode_opcode (unsigned long, RX_Opcode_Decoded *, int (*)(void *), void *);
+int rx_decode_opcode (unsigned long, RX_Opcode_Decoded *, int (*)(RX_Data *), RX_Data *, unsigned long);
 
 #ifdef __cplusplus
 }

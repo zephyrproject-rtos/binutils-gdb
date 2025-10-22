@@ -137,6 +137,8 @@ static char *callnames[] = {
   "SYS_link"
 };
 
+unsigned ccrx_sys_flags;
+
 int
 rx_syscall (int id)
 {
@@ -181,7 +183,21 @@ rx_syscall (int id)
 	else
 	  {
 	    int h_oflags = 0;
-
+	    if (ccrx_sys_flags)
+	  {
+	    if (oflags & 0x0001)
+	      h_oflags |= O_RDONLY;
+	    if (oflags & 0x0002)
+	      h_oflags |= O_WRONLY;
+	    if (oflags & 0x0010)
+	      h_oflags |= O_CREAT;
+	    if (oflags & 0x0004)
+	      h_oflags |= O_APPEND;
+	    if (oflags & 0x0008)
+	      h_oflags |= O_TRUNC;
+	  }
+	  else
+	  {
 	    if (oflags & 0x0001)
 	      h_oflags |= O_WRONLY;
 	    if (oflags & 0x0002)
@@ -192,6 +208,7 @@ rx_syscall (int id)
 	      h_oflags |= O_APPEND;
 	    if (oflags & 0x0400)
 	      h_oflags |= O_TRUNC;
+	  }
 	    rv = open (buf, h_oflags, cflags);
 	  }
 	if (trace)

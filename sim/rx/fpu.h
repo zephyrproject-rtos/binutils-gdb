@@ -27,3 +27,6 @@ extern fp_t rxfp_div (fp_t fa, fp_t fb);
 extern void rxfp_cmp (fp_t fa, fp_t fb);
 extern long rxfp_ftoi (fp_t fa, int round_mode);
 extern fp_t rxfp_itof (long fa, int round_mode);
+extern fp_t rxfp_utof (unsigned long fa, int round_mode);
+extern unsigned long rxfp_ftou (fp_t fa);
+extern fp_t rxfp_fsqrt (fp_t fa);

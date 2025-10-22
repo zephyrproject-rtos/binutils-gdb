@@ -31,6 +31,7 @@
 #include "frame-unwind.h"
 #include "frame-base.h"
 #include "value.h"
+#include "cli/cli-cmds.h"
 #include "gdbcore.h"
 #include "dwarf2/frame.h"
 #include "remote.h"
@@ -42,7 +43,10 @@
 #include "elf-bfd.h"
 #include <algorithm>
 
+#include "target-descriptions.h"
 #include "features/rx.c"
+#include "features/rxv2.c"
+#include "features/rxv3.c"
 
 /* Certain important register numbers.  */
 enum
@@ -50,7 +54,7 @@ enum
   RX_SP_REGNUM = 0,
   RX_R1_REGNUM = 1,
   RX_R4_REGNUM = 4,
-  RX_FP_REGNUM = 6,
+  RX_FP_REGNUM = 10,
   RX_R15_REGNUM = 15,
   RX_USP_REGNUM = 16,
   RX_PSW_REGNUM = 18,
@@ -59,7 +63,10 @@ enum
   RX_BPC_REGNUM = 22,
   RX_FPSW_REGNUM = 24,
   RX_ACC_REGNUM = 25,
-  RX_NUM_REGS = 26
+  RX_NUM_REGS = 26,
+  RXV2_NUM_REGS = 28,
+  RXV3_DR0_REGNUM = 28,
+  RXV3_NUM_REGS = 47
 };
 
 /* RX frame types.  */
@@ -117,7 +124,8 @@ struct rx_prologue
   /* reg_offset[R] is the offset from the CFA at which register R is
      saved, or 1 if register R has not been saved.  (Real values are
      always zero or negative.)  */
-  int reg_offset[RX_NUM_REGS];
+  /* RXV3_NUM_REGS > RXV2_NUM_REGS > RX_NUM_REGS we just have to ignore the last ones */
+  int reg_offset[RXV3_NUM_REGS];
 };
 
 /* RX register names */
@@ -128,6 +136,124 @@ static const char *const rx_register_names[] = {
   "fpsw", "acc",
 };
 
+static const char *const rxv2_register_names[] = {
+  "r0",
+  "r1",
+  "r2",
+  "r3",
+  "r4",
+  "r5",
+  "r6",
+  "r7",
+  "r8",
+  "r9",
+  "r10",
+  "r11",
+  "r12",
+  "r13",
+  "r14",
+  "r15",
+  "usp",
+  "isp",
+  "psw",
+  "pc",
+  "intb",
+  "bpsw",
+  "bpc",
+  "fintv",
+  "fpsw",
+  "acc0",
+  "acc1",
+  "extb"
+};
+
+static const char *const rxv3_register_names[] = {
+  "r0",
+  "r1",
+  "r2",
+  "r3",
+  "r4",
+  "r5",
+  "r6",
+  "r7",
+  "r8",
+  "r9",
+  "r10",
+  "r11",
+  "r12",
+  "r13",
+  "r14",
+  "r15",
+  "usp",
+  "isp",
+  "psw",
+  "pc",
+  "intb",
+  "bpsw",
+  "bpc",
+  "fintv",
+  "fpsw",
+  "acc0",
+  "acc1",
+  "extb",
+  "dr0",
+  "dr1",
+  "dr2",
+  "dr3",
+  "dr4",
+  "dr5",
+  "dr6",
+  "dr7",
+  "dr8",
+  "dr9",
+  "dr10",
+  "dr11",
+  "dr12",
+  "dr13",
+  "dr14",
+  "dr15",
+  "dpsw",
+  "dcmr",
+  "decnt",
+  "depc",
+};
+
+/* The list of available "set rx ..." and "show rx ..." commands.  */
+static struct cmd_list_element *setrxcmdlist = NULL;
+static struct cmd_list_element *showrxcmdlist = NULL;
+
+/* The 64bit-double mode to assume.  */
+static const char *const rx_64bit_double_strings[] =
+{
+  "auto",
+  "1",
+  "0",
+  "on",
+  "off",
+  NULL
+};
+
+/* The isa mode to assume.  */
+static const char *const rx_isa_strings[] =
+{
+  "auto",
+  "v1",
+  "v2",
+  "v3",
+  NULL
+ };
+
+static const char *const rx_double_fpu_strings[] =
+{
+  "auto",
+  "1",
+  "0",
+  "on",
+  "off",
+  NULL
+};
+
+static unsigned long machine = bfd_mach_rx;
 
 /* Function for finding saved registers in a 'struct pv_area'; this
    function is passed to pv_area::scan.
@@ -147,29 +273,22 @@ check_for_saved (void *result_untyped, pv_t addr, CORE_ADDR size, pv_t value)
     result->reg_offset[value.reg] = addr.k;
 }
 
-/* Define a "handle" struct for fetching the next opcode.  */
-struct rx_get_opcode_byte_handle
-{
-  CORE_ADDR pc;
-};
-
 /* Fetch a byte on behalf of the opcode decoder.  HANDLE contains
    the memory address of the next byte to fetch.  If successful,
    the address in the handle is updated and the byte fetched is
    returned as the value of the function.  If not successful, -1
    is returned.  */
 static int
-rx_get_opcode_byte (void *handle)
+rx_get_opcode_byte (RX_Data *handle)
 {
-  struct rx_get_opcode_byte_handle *opcdata
-    = (struct rx_get_opcode_byte_handle *) handle;
+  RX_Data *opcdata = handle;
   int status;
   gdb_byte byte;
 
-  status = target_read_code (opcdata->pc, &byte, 1);
+  status = target_read_code (opcdata->addr, &byte, 1);
   if (status == 0)
     {
-      opcdata->pc += 1;
+      opcdata->addr += 1;
       return byte;
     }
   else
@@ -186,18 +305,33 @@ rx_analyze_prologue (CORE_ADDR start_pc, CORE_ADDR limit_pc,
 {
   CORE_ADDR pc, next_pc;
   int rn;
-  pv_t reg[RX_NUM_REGS];
+  /* for RX we will ignore the last 2 */
+  pv_t reg[RXV3_NUM_REGS];
   CORE_ADDR after_last_frame_setup_insn = start_pc;
 
   memset (result, 0, sizeof (*result));
 
   result->frame_type = frame_type;
 
+  switch(machine)
+  {
+  case bfd_mach_rx:
   for (rn = 0; rn < RX_NUM_REGS; rn++)
     {
       reg[rn] = pv_register (rn, 0);
       result->reg_offset[rn] = 1;
     }
+  	  break;
+  case bfd_mach_rx_v2:
+  case bfd_mach_rx_v3:
+  case bfd_mach_rx_v3_dfpu:
+	  for (rn = 0; rn < RXV2_NUM_REGS; rn++)
+	  {
+    	 reg[rn] = pv_register (rn, 0);
+    	 result->reg_offset[rn] = 1;
+	  }
+	  break;
+  }
 
   pv_area stack (RX_SP_REGNUM, gdbarch_addr_bit (current_inferior ()->arch ()));
 
@@ -230,12 +364,12 @@ rx_analyze_prologue (CORE_ADDR start_pc, CORE_ADDR limit_pc,
   while (pc < limit_pc)
     {
       int bytes_read;
-      struct rx_get_opcode_byte_handle opcode_handle;
+      RX_Data opcode_handle;
       RX_Opcode_Decoded opc;
 
-      opcode_handle.pc = pc;
+      opcode_handle.addr = pc;
       bytes_read = rx_decode_opcode (pc, &opc, rx_get_opcode_byte,
-				     &opcode_handle);
+				     &opcode_handle, machine);
       next_pc = pc + bytes_read;
 
       if (opc.id == RXO_pushm	/* pushm r1, r2 */
@@ -294,6 +428,20 @@ rx_analyze_prologue (CORE_ADDR start_pc, CORE_ADDR limit_pc,
 	  if ((rdst == RX_SP_REGNUM || rdst == RX_FP_REGNUM) && addend < 0)
 	    after_last_frame_setup_insn = next_pc;
 	}
+    else if (opc.id == RXO_sub	/* sub #const, rdst */
+    	&& opc.op[0].type == RX_Operand_Register
+    		       && opc.op[1].type == RX_Operand_Register
+    		       && opc.op[2].type == RX_Operand_Immediate)
+    		{
+    		  int rdst = opc.op[0].reg;
+    		  int addend = -opc.op[2].addend;
+    		  int rsrc = opc.op[1].reg;
+    		  reg[rdst] = pv_add_constant (reg[rsrc], addend);
+    		  /* Negative adjustments to the stack pointer or frame pointer
+    		     are (most likely) part of the prologue.  */
+    		  if ((rdst == RX_SP_REGNUM || rdst == RX_FP_REGNUM) && addend < 0)
+    		    after_last_frame_setup_insn = next_pc;
+    		}
       else if (opc.id == RXO_mov
 	       && opc.op[0].type == RX_Operand_Indirect
 	       && opc.op[1].type == RX_Operand_Register
@@ -305,32 +453,6 @@ rx_analyze_prologue (CORE_ADDR start_pc, CORE_ADDR limit_pc,
 	{
 	  /* This moves an argument register to the stack.  Don't
 	     record it, but allow it to be a part of the prologue.  */
-	}
-      else if (opc.id == RXO_branch
-	       && opc.op[0].type == RX_Operand_Immediate
-	       && next_pc < opc.op[0].addend)
-	{
-	  /* When a loop appears as the first statement of a function
-	     body, gcc 4.x will use a BRA instruction to branch to the
-	     loop condition checking code.  This BRA instruction is
-	     marked as part of the prologue.  We therefore set next_pc
-	     to this branch target and also stop the prologue scan.
-	     The instructions at and beyond the branch target should
-	     no longer be associated with the prologue.
-
-	     Note that we only consider forward branches here.  We
-	     presume that a forward branch is being used to skip over
-	     a loop body.
-
-	     A backwards branch is covered by the default case below.
-	     If we were to encounter a backwards branch, that would
-	     most likely mean that we've scanned through a loop body.
-	     We definitely want to stop the prologue scan when this
-	     happens and that is precisely what is done by the default
-	     case below.  */
-
-	  after_last_frame_setup_insn = opc.op[0].addend;
-	  break;		/* Scan no further if we hit this case.  */
 	}
       else
 	{
@@ -417,7 +539,7 @@ rx_frame_type (const frame_info_ptr &this_frame, void **this_cache)
   const char *name;
   CORE_ADDR pc, start_pc, lim_pc;
   int bytes_read;
-  struct rx_get_opcode_byte_handle opcode_handle;
+  RX_Data opcode_handle;
   RX_Opcode_Decoded opc;
 
   gdb_assert (this_cache != NULL);
@@ -433,9 +555,9 @@ rx_frame_type (const frame_info_ptr &this_frame, void **this_cache)
 
   /* No cached value; scan the function.  The frame type is cached in
      rx_analyze_prologue / rx_analyze_frame_prologue.  */
-  
+
   pc = get_frame_pc (this_frame);
-  
+
   /* Attempt to find the last address in the function.  If it cannot
      be determined, set the limit to be a short ways past the frame's
      pc.  */
@@ -444,9 +566,9 @@ rx_frame_type (const frame_info_ptr &this_frame, void **this_cache)
 
   while (pc < lim_pc)
     {
-      opcode_handle.pc = pc;
+      opcode_handle.addr = pc;
       bytes_read = rx_decode_opcode (pc, &opc, rx_get_opcode_byte,
-				     &opcode_handle);
+				     &opcode_handle, machine);
 
       if (bytes_read <= 0 || opc.id == RXO_rts)
 	return RX_FRAME_TYPE_NORMAL;
@@ -628,13 +750,41 @@ rx_exception_sniffer (const struct frame_unwind *self,
 				  exception_frame_p);
 }
 
-/* Data structure for normal code using instruction-based prologue
-   analyzer.  */
+enum unwind_stop_reason
+rx_frame_unwind_stop_reason (const frame_info_ptr& this_frame,
+				  void **this_cache)
+{
+	/* find function start  */
+	CORE_ADDR func_start = get_frame_func (this_frame);
+	CORE_ADDR func_addr, func_end;
+	const char *funcName = NULL;
+	RX_Data opcode_handle;
+	RX_Opcode_Decoded opc;
+	/* find function end */
+	if (!find_pc_partial_function (func_start, &funcName, &func_addr, &func_end))
+	{
+		/*don't know what happened. leave this to default handling */
+		return UNWIND_NO_REASON;
+	}
+	/*check the last 2 bytes before the end of the function to see if they are
+	 RTE or RTFI. If yes this means this is an interrupt function, stop here */
+	opcode_handle.addr = func_end - 2;
+	if(rx_decode_opcode (func_end - 2, &opc, rx_get_opcode_byte,
+					     &opcode_handle, machine) == 2)
+	{
+		if((opc.id == RXO_rte) || (opc.id == RXO_rtfi))
+		{
+			return UNWIND_OUTERMOST;
+		}
+	}
+
+	return UNWIND_NO_REASON;
+}
 
 static const struct frame_unwind rx_frame_unwind = {
   "rx prologue",
   NORMAL_FRAME,
-  default_frame_unwind_stop_reason,
+  rx_frame_unwind_stop_reason,
   rx_frame_this_id,
   rx_frame_prev_register,
   NULL,
@@ -922,6 +1072,52 @@ rx_return_value (struct gdbarch *gdbarch,
   return RETURN_VALUE_REGISTER_CONVENTION;
 }
 
+/* Breakpoints
+	Suppress software breakpoints in case of REE simulator and hw.  */
+
+static int
+rx_memory_insert_breakpoint (struct gdbarch *gdbarch,
+ 			       struct bp_target_info *bp_tgt)
+ {
+  int status = MEMORY_ERROR;
+  for (inferior *inf : all_inferiors_safe ())
+    {
+      if (strcmp(inf->top_target ()->shortname(), "sim") == 0)
+      {
+        status = default_memory_insert_breakpoint (gdbarch, bp_tgt);
+      }
+    }
+  return status;
+}
+
+static int
+rx_memory_remove_breakpoint (struct gdbarch *gdbarch,
+			       struct bp_target_info *bp_tgt)
+{
+  int status = MEMORY_ERROR;
+  for (inferior *inf : all_inferiors_safe ())
+    {
+      if (strcmp(inf->top_target ()->shortname(), "sim") == 0)
+      {
+        status = default_memory_insert_breakpoint (gdbarch, bp_tgt);
+      }
+    }
+  return status;
+}
+
+/* Implement the "breakpoint_from_pc" gdbarch method.  */
+static const gdb_byte *
+rx_breakpoint_from_pc (struct gdbarch *gdbarch, CORE_ADDR *pcptr, int *lenptr)
+{
+#ifdef __FOR_E2_STUDIO__
+  static gdb_byte breakpoint[] = { 0x01 };
+#else
+  static gdb_byte breakpoint[] = { 0x00 };
+#endif
+  *lenptr = sizeof breakpoint;
+  return breakpoint;
+}
+
 constexpr gdb_byte rx_break_insn[] = { 0x00 };
 
 typedef BP_MANIPULATION (rx_break_insn) rx_breakpoint;
@@ -937,8 +1133,55 @@ rx_dwarf_reg_to_regnum (struct gdbarch *gdbarch, int reg)
     return RX_PSW_REGNUM;
   else if (reg == 17)
     return RX_PC_REGNUM;
+  else if(32 <= reg && reg <= 47)
+	return reg + (RXV3_DR0_REGNUM - 32);
   else
     return -1;
+}
+
+
+/* Implement the unconditional_branch_address gdbarch method.  */
+
+static CORE_ADDR
+rx_unconditional_branch_address (struct gdbarch *gdbarch, CORE_ADDR pc)
+{
+  int bytes_read;
+  RX_Opcode_Decoded opc;
+  RX_Data opcode_handle;
+
+  opcode_handle.addr = pc;
+
+  bytes_read = rx_decode_opcode (pc, &opc, rx_get_opcode_byte,
+               &opcode_handle, machine);
+
+  if (bytes_read > 0
+      && (opc.id == RXO_branch || opc.id == RXO_branchrel)
+      && (opc.op[1].type == RX_Operand_None
+          || (opc.op[1].type == RX_Operand_Condition
+	      && opc.op[1].reg == RXC_always))
+      && opc.op[0].type == RX_Operand_Immediate)
+    {
+      uint32_t addr = opc.op[0].addend; /* ensure we use 32-bit addrs */
+      if (opc.id != RXO_branch)
+	addr += pc;
+      return addr;
+    }
+
+  return 0;
+}
+
+static void
+set_rx_command (const char *args, int from_tty)
+{
+  printf_unfiltered (_("\
+    \"set rx\" must be followed by an apporpriate subcommand.\n"));
+    help_list (setrxcmdlist, "set rx ", all_commands, gdb_stdout);
+}
+
+static void
+show_rx_command (const char *args, int from_tty)
+{
+  cmd_show_list (showrxcmdlist, from_tty);
 }
 
 /* Allocate and initialize a gdbarch object.  */
@@ -957,38 +1200,76 @@ rx_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
     elf_flags = 0;
 
 
-  /* Try to find the architecture in the list of already defined
-     architectures.  */
-  for (arches = gdbarch_list_lookup_by_info (arches, &info);
-       arches != NULL;
-       arches = gdbarch_list_lookup_by_info (arches->next, &info))
+  if (!tdesc_has_registers (tdesc))
+  {
+    if (((elf_flags & E_FLAG_RX_V_MASK) == E_FLAG_RX_V3)
+        && (elf_flags & E_FLAG_RX_V3_DFPU))
     {
-      rx_gdbarch_tdep *tdep
-	= gdbarch_tdep<rx_gdbarch_tdep> (arches->gdbarch);
-
-      if (tdep->elf_flags != elf_flags)
-	continue;
-
-      return arches->gdbarch;
+      machine = bfd_mach_rx_v3_dfpu;
+      tdesc = tdesc_rx_v3;
     }
-
-  if (tdesc == NULL)
+    else if ((elf_flags & E_FLAG_RX_V_MASK) == E_FLAG_RX_V3)
+    {
+      machine = bfd_mach_rx_v3;
+      tdesc = tdesc_rx_v2;
+    }
+    else if ((elf_flags & E_FLAG_RX_V_MASK) == E_FLAG_RX_V2)
+    {
+      machine = bfd_mach_rx_v2;
+      tdesc = tdesc_rx_v2;
+    }
+    else
+    {
+      machine = bfd_mach_rx;
       tdesc = tdesc_rx;
+    }
+  }
 
-  /* Check any target description for validity.  */
+  /* Check target description for validity.  */
   if (tdesc_has_registers (tdesc))
     {
-      const struct tdesc_feature *feature;
-      bool valid_p = true;
-
+      const struct tdesc_feature *feature = NULL;
+      int valid_p, i;
+      switch(machine)
+      {
+      case bfd_mach_rx:
       feature = tdesc_find_feature (tdesc, "org.gnu.gdb.rx.core");
+    	  break;
+      case bfd_mach_rx_v2:
+      case bfd_mach_rx_v3:
+          feature = tdesc_find_feature (tdesc, "org.gnu.gdb.rx.corev2");
+          break;
+      case bfd_mach_rx_v3_dfpu:
+          feature = tdesc_find_feature (tdesc, "org.gnu.gdb.rx.corev3");
+          break;
+      }
+      if (feature == NULL)
+	return NULL;
 
-      if (feature != NULL)
-	{
 	  tdesc_data = tdesc_data_alloc ();
-	  for (int i = 0; i < RX_NUM_REGS; i++)
-	    valid_p &= tdesc_numbered_register (feature, tdesc_data.get (), i,
-						rx_register_names[i]);
+
+      valid_p = 1;
+      switch(machine)
+      {
+      case bfd_mach_rx:
+        for (i = 0; i < RX_NUM_REGS; i++)
+    	{
+          valid_p &= tdesc_numbered_register (feature, tdesc_data.get (), i, rx_register_names[i]);
+        }
+        break;
+      case bfd_mach_rx_v2:
+      case bfd_mach_rx_v3:
+        for (i = 0; i < RXV2_NUM_REGS; i++)
+    	{
+          valid_p &= tdesc_numbered_register (feature, tdesc_data.get (), i, rxv2_register_names[i]);
+        }
+        break;
+      case bfd_mach_rx_v3_dfpu:
+        for (i = 0; i < RXV3_NUM_REGS; i++)
+    	{
+          valid_p &= tdesc_numbered_register (feature, tdesc_data.get (), i, rxv3_register_names[i]);
+        }
+        break;
 	}
 
       if (!valid_p)
@@ -1003,7 +1284,19 @@ rx_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
 
   tdep->elf_flags = elf_flags;
 
+    switch(machine)
+  {
+  case bfd_mach_rx:
   set_gdbarch_num_regs (gdbarch, RX_NUM_REGS);
+    break;
+  case bfd_mach_rx_v2:
+  case bfd_mach_rx_v3:
+    set_gdbarch_num_regs (gdbarch, RXV2_NUM_REGS);
+    break;
+  case bfd_mach_rx_v3_dfpu:
+    set_gdbarch_num_regs (gdbarch, RXV3_NUM_REGS);
+    break;
+  }
   tdesc_use_registers (gdbarch, tdesc, std::move (tdesc_data));
 
   set_gdbarch_num_pseudo_regs (gdbarch, 0);
@@ -1013,7 +1306,25 @@ rx_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
   set_gdbarch_decr_pc_after_break (gdbarch, 1);
   set_gdbarch_breakpoint_kind_from_pc (gdbarch, rx_breakpoint::kind_from_pc);
   set_gdbarch_sw_breakpoint_from_kind (gdbarch, rx_breakpoint::bp_from_kind);
+  set_gdbarch_memory_insert_breakpoint (gdbarch, rx_memory_insert_breakpoint);
+  set_gdbarch_memory_remove_breakpoint (gdbarch, rx_memory_remove_breakpoint);
   set_gdbarch_skip_prologue (gdbarch, rx_skip_prologue);
+
+  switch(machine)
+  {
+    case bfd_mach_rx:
+      set_gdbarch_print_insn (gdbarch, print_insn_rx);
+      break;
+    case bfd_mach_rx_v2:
+      set_gdbarch_print_insn (gdbarch, print_insn_rxv2);
+      break;
+    case bfd_mach_rx_v3:
+      set_gdbarch_print_insn (gdbarch, print_insn_rxv3);
+      break;
+    case bfd_mach_rx_v3_dfpu:
+      set_gdbarch_print_insn (gdbarch, print_insn_rxv3_dfpu);
+      break;
+  }
 
   /* Target builtin data types.  */
   set_gdbarch_char_signed (gdbarch, 0);
@@ -1067,4 +1378,14 @@ _initialize_rx_tdep ()
 {
   gdbarch_register (bfd_arch_rx, rx_gdbarch_init);
   initialize_tdesc_rx ();
+  initialize_tdesc_rxv2 ();
+  initialize_tdesc_rxv3 ();
+
+  add_prefix_cmd ("rx", no_class, set_rx_command,
+    _("Various RX-specific commands."),
+    &setrxcmdlist, 0, &setlist);
+
+  add_prefix_cmd ("rx", no_class, show_rx_command,
+    _("Various RX-specific commands."),
+    &showrxcmdlist, 0, &showlist);
 }
