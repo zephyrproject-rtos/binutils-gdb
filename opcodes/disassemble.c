@@ -401,6 +401,13 @@ disassembler (enum bfd_architecture a,
 #endif
 #ifdef ARCH_rx
     case bfd_arch_rx:
+      if (bfd_get_mach (abfd) == bfd_mach_rx_v3_dfpu)
+        disassemble = print_insn_rxv3_dfpu;
+      else if (bfd_get_mach (abfd) == bfd_mach_rx_v3)
+        disassemble = print_insn_rxv3;
+      else if (bfd_get_mach (abfd) == bfd_mach_rx_v2)
+        disassemble = print_insn_rxv2;
+      else
       disassemble = print_insn_rx;
       break;
 #endif

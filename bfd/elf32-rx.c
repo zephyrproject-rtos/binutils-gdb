@@ -1,5 +1,5 @@
 /* Renesas RX specific support for 32-bit ELF.
-   Copyright (C) 2008-2024 Free Software Foundation, Inc.
+   Copyright (C) 2008-2025 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -671,17 +671,43 @@ rx_elf_relocate_section
 	relocation = 0;
       else
 	{
+	  relocation += rel->r_addend;
 	  if (howto->pc_relative)
 	    {
-	      relocation -= (input_section->output_section->vma
+		  bfd_vma pc_pos = 	input_section->output_section->vma
 			     + input_section->output_offset
-			     + rel->r_offset);
+			     + rel->r_offset;
+		  // sanity check
+		  if (pc_pos > UINT32_MAX || relocation > UINT32_MAX)
+		  {
+		    /* xgettext:c-format */
+		    _bfd_error_handler(_("%pB:%pA: invalid relocation range %s "),
+			     				 input_bfd, input_section,
+			    				 name);
+			return false;
+		  }
+
+		  uint32_t forward_jump, backward_jump;
+		  if (relocation > pc_pos)
+		  {
+		    forward_jump = relocation - pc_pos;
+		    backward_jump = UINT32_MAX - relocation + pc_pos + 1;
+		  }
+		  else
+		  {
+		    forward_jump = UINT32_MAX - pc_pos + relocation + 1;
+		    backward_jump = pc_pos - relocation;
+		  }
+		  if (forward_jump < backward_jump)
+		    relocation = forward_jump;
+		  else
+		    relocation = -(bfd_signed_vma)backward_jump;
+
 	      if (r_type != R_RX_RH_3_PCREL
 		  && r_type != R_RX_DIR3U_PCREL)
 		relocation ++;
 	    }
 
-	  relocation += rel->r_addend;
 	}
 
       r = bfd_reloc_ok;
@@ -745,12 +771,15 @@ rx_elf_relocate_section
 
 	case R_RX_RH_8_NEG:
 	  WARN_REDHAT ("RX_RH_8_NEG");
-	  relocation = - relocation;
+	  relocation = -(bfd_signed_vma)relocation;
 	  /* Fall through.  */
 	case R_RX_DIR8S_PCREL:
+	if(((bfd_signed_vma)relocation >= -128) && ((bfd_signed_vma)relocation <=127))
+	{
 	  UNSAFE_FOR_PID;
 	  RANGE (-128, 127);
 	  OP (0) = relocation;
+    	}
 	  break;
 
 	case R_RX_DIR8S:
@@ -767,7 +796,7 @@ rx_elf_relocate_section
 
 	case R_RX_RH_16_NEG:
 	  WARN_REDHAT ("RX_RH_16_NEG");
-	  relocation = - relocation;
+	  relocation = -(bfd_signed_vma)relocation;
 	  /* Fall through.  */
 	case R_RX_DIR16S_PCREL:
 	  UNSAFE_FOR_PID;
@@ -794,7 +823,7 @@ rx_elf_relocate_section
 
 	case R_RX_DIR16S:
 	  UNSAFE_FOR_PID;
-	  RANGE (-32768, 65535);
+	  RANGE (-32768, 32767); /*Applied range_check_1015.patch*/
 	  if (BIGE (output_bfd) && !(input_section->flags & SEC_CODE))
 	    {
 	      OP (1) = relocation;
@@ -844,15 +873,18 @@ rx_elf_relocate_section
 	  break;
 
 	case R_RX_DIR3U_PCREL:
+	if((relocation >= 3) && (relocation <=10))
+	{
 	  RANGE (3, 10);
 	  OP (0) &= 0xf8;
 	  OP (0) |= relocation & 0x07;
+	}
 	  break;
 
 	case R_RX_RH_24_NEG:
 	  UNSAFE_FOR_PID;
 	  WARN_REDHAT ("RX_RH_24_NEG");
-	  relocation = - relocation;
+	  relocation = -(bfd_signed_vma)relocation;
 	  /* Fall through.  */
 	case R_RX_DIR24S_PCREL:
 	  RANGE (-0x800000, 0x7fffff);
@@ -1460,7 +1492,10 @@ rx_elf_relocate_section
 
       if (r != bfd_reloc_ok)
 	{
-	  const char * msg = NULL;
+	  /* xgettext:c-format */
+	  const char * msg = _("%pB(%pA): internal error: unknown error");
+
+	  bool relocation_ok = false;
 
 	  switch (r)
 	    {
@@ -1470,15 +1505,18 @@ rx_elf_relocate_section
 	      if (r_type == R_RX_DIR24S_PCREL)
 		/* xgettext:c-format */
 		msg = _("%pB(%pA): error: call to undefined function '%s'");
-	      else
+	      else {
 		(*info->callbacks->reloc_overflow)
 		  (info, (h ? &h->root : NULL), name, howto->name, (bfd_vma) 0,
 		   input_bfd, input_section, rel->r_offset);
+		   relocation_ok = true;
+		  }
 	      break;
 
 	    case bfd_reloc_undefined:
 	      (*info->callbacks->undefined_symbol)
 		(info, name, input_bfd, input_section, rel->r_offset, true);
+		relocation_ok = true;
 	      break;
 
 	    case bfd_reloc_other:
@@ -1502,13 +1540,13 @@ rx_elf_relocate_section
 	      break;
 
 	    default:
-	      /* xgettext:c-format */
-	      msg = _("%pB(%pA): internal error: unknown error");
 	      break;
 	    }
 
-	  if (msg)
+	  if (!relocation_ok) {
 	    _bfd_error_handler (msg, input_bfd, input_section, name);
+		return false;
+	  }
 	}
     }
 
@@ -2456,6 +2494,7 @@ elf32_rx_relax_section (bfd *abfd,
       if (irel->r_addend & RX_RELAXA_IMM6)
 	{
 	  long ssymval;
+	  const long delta = 10000;
 
 	  GET_RELOC;
 
@@ -2464,7 +2503,7 @@ elf32_rx_relax_section (bfd *abfd,
 
 	  code = insn[0] & 0x03;
 
-	  if (code == 0 && ssymval <= 8388607 && ssymval >= -8388608)
+	  if (code == 0 && ssymval <= 8388607 && ssymval >= -(8388608  - delta))
 	    {
 	      unsigned int newrel = ELF32_R_TYPE (srel->r_info);
 
@@ -2478,7 +2517,7 @@ elf32_rx_relax_section (bfd *abfd,
 		}
 	    }
 
-	  else if (code == 3 && ssymval <= 32767 && ssymval >= -32768)
+	  else if (code == 3 && ssymval <= 32767 && ssymval >= -(32768 - delta))
 	    {
 	      unsigned int newrel = ELF32_R_TYPE (srel->r_info);
 
@@ -2592,7 +2631,7 @@ elf32_rx_relax_section (bfd *abfd,
 	{
 	  int dspcode, offset = 0;
 	  long ssymval;
-
+	  const long delta = 10000;
 	  GET_RELOC;
 
 	  if ((insn[0] & 0xfc) == 0xfc)
@@ -2611,7 +2650,7 @@ elf32_rx_relax_section (bfd *abfd,
 	  ssymval = (long) symval;
 
 	  code = (insn[1] >> 2) & 3;
-	  if (code == 0 && ssymval <= 8388607 && ssymval >= -8388608)
+	  if (code == 0 && ssymval <= 8388607 && ssymval >= -(8388608 - delta))
 	    {
 	      unsigned int newrel = ELF32_R_TYPE (srel->r_info);
 
@@ -2625,7 +2664,7 @@ elf32_rx_relax_section (bfd *abfd,
 		}
 	    }
 
-	  else if (code == 3 && ssymval <= 32767 && ssymval >= -32768)
+	  else if (code == 3 && ssymval <= 32767 && ssymval >= -(32768 - delta))
 	    {
 	      unsigned int newrel = ELF32_R_TYPE (srel->r_info);
 
@@ -3049,7 +3088,8 @@ elf32_rx_relax_section (bfd *abfd,
   return true;
 
  error_return:
-  free (free_contents);
+  if (free_contents != NULL)
+   free (free_contents);
 
   if (shndx_buf != NULL)
     {
@@ -3057,7 +3097,8 @@ elf32_rx_relax_section (bfd *abfd,
       free (shndx_buf);
     }
 
-  free (free_intsyms);
+  if (free_intsyms != NULL)
+   free (free_intsyms);
 
   return false;
 }
@@ -3122,6 +3163,15 @@ describe_flags (flagword flags, char *buf)
   else
     strcat (buf, ", GCC ABI");
 
+  if(flags & E_FLAG_RX_V1)
+    strcat (buf, ", V1");
+  else if(flags & E_FLAG_RX_V2)
+    strcat (buf, ", V2");
+  else if(flags & E_FLAG_RX_V3)
+    strcat (buf, ", V3");
+
+  if(flags & E_FLAG_RX_V3_DFPU)
+    strcat (buf, ", DFPU support");
   if (flags & E_FLAG_RX_SINSNS_SET)
     strcat (buf, flags & E_FLAG_RX_SINSNS_YES ? ", uses String instructions" : ", bans String instructions");
 
@@ -3165,10 +3215,24 @@ rx_elf_merge_private_bfd_data (bfd * ibfd, struct bfd_link_info *info)
 	  old_flags &= ~ E_FLAG_RX_SINSNS_MASK;
 	  old_flags |= (new_flags & E_FLAG_RX_SINSNS_MASK);
 	}
-
-      known_flags = E_FLAG_RX_ABI | E_FLAG_RX_64BIT_DOUBLES
-	| E_FLAG_RX_DSP | E_FLAG_RX_PID | E_FLAG_RX_SINSNS_MASK;
-
+      /* if different ISA versions update to the newest one */
+      if ((new_flags & E_FLAG_RX_V3) || (old_flags & E_FLAG_RX_V3))
+      {
+        new_flags &= ~ E_FLAG_RX_V_MASK;
+        new_flags |= E_FLAG_RX_V3;
+        old_flags &= ~ E_FLAG_RX_V_MASK;
+        old_flags |= E_FLAG_RX_V3;
+      }
+      else if ((new_flags & E_FLAG_RX_V2) || (old_flags & E_FLAG_RX_V2))
+      {
+        new_flags &= ~ E_FLAG_RX_V_MASK;
+        new_flags |= E_FLAG_RX_V2;
+        old_flags &= ~ E_FLAG_RX_V_MASK;
+        old_flags |= E_FLAG_RX_V2;
+      }
+      known_flags = E_FLAG_RX_ABI | E_FLAG_RX_64BIT_DOUBLES	|
+	  E_FLAG_RX_DSP | E_FLAG_RX_PID | E_FLAG_RX_SINSNS_MASK |
+	  E_FLAG_RX_V_MASK | E_FLAG_RX_V3_DFPU;
       if ((old_flags ^ new_flags) & known_flags)
 	{
 	  /* Only complain if flag bits we care about do not match.
@@ -3226,17 +3290,18 @@ rx_elf_print_private_bfd_data (bfd * abfd, void * ptr)
 static int
 elf32_rx_machine (bfd * abfd ATTRIBUTE_UNUSED)
 {
-#if 0 /* FIXME: EF_RX_CPU_MASK collides with E_FLAG_RX_...
-	 Need to sort out how these flag bits are used.
-	 For now we assume that the flags are OK.  */
-  if ((elf_elfheader (abfd)->e_flags & EF_RX_CPU_MASK) == EF_RX_CPU_RX)
-#endif
-    if ((elf_elfheader (abfd)->e_flags & E_FLAG_RX_V2))
-      return bfd_mach_rx_v2;
-    else if ((elf_elfheader (abfd)->e_flags & E_FLAG_RX_V3))
-      return bfd_mach_rx_v3;
-    else
-      return bfd_mach_rx;
+  const int flags = elf_elfheader (abfd)->e_flags;
+
+  switch (flags & (E_FLAG_RX_V1|E_FLAG_RX_V2|E_FLAG_RX_V3)) {
+  case E_FLAG_RX_V3:
+    if (flags & E_FLAG_RX_V3_DFPU)
+      return bfd_mach_rx_v3_dfpu;
+    return bfd_mach_rx_v3;
+  case E_FLAG_RX_V2:
+    return bfd_mach_rx_v2;
+  case E_FLAG_RX_V1:
+    return bfd_mach_rx;
+  }
 
   return 0;
 }
@@ -3260,7 +3325,7 @@ rx_elf_object_p (bfd * abfd)
       && abfd->target_defaulted)
     return false;
 
-  /* BFD->target_defaulted is not set to TRUE when a target is chosen
+  /* BFD->target_defaulted is not set to true when a target is chosen
      as a fallback, so we check for "scanning" to know when to stop
      using the non-swapping target.  */
   if (abfd->xvec == &rx_elf32_be_ns_vec
@@ -3311,7 +3376,7 @@ rx_elf_object_p (bfd * abfd)
 		 The correct LMA for the section is fffc0140 + (2050-2010).
 	      */
 
-	      phdr[i].p_vaddr = sec->sh_addr + (sec->sh_offset - phdr[i].p_offset);
+	      phdr[i].p_vaddr = sec->sh_addr - (sec->sh_offset - phdr[i].p_offset);
 	      break;
 	    }
 	}
@@ -3321,9 +3386,10 @@ rx_elf_object_p (bfd * abfd)
       bsec = abfd->sections;
       while (bsec)
 	{
-	  if (phdr[i].p_filesz
-	      && phdr[i].p_vaddr <= bsec->vma
-	      && bsec->vma <= phdr[i].p_vaddr + (phdr[i].p_filesz - 1))
+	  if (bsec->flags & (SEC_LOAD | SEC_ALLOC)
+	     && phdr[i].p_vaddr > 0
+             && phdr[i].p_offset <= (bfd_vma) bsec->filepos
+             && (bfd_vma) bsec->filepos + 1 <= phdr[i].p_offset + (phdr[i].p_filesz))
 	    {
 	      bsec->lma = phdr[i].p_paddr + (bsec->vma - phdr[i].p_vaddr);
 	    }
@@ -3724,6 +3790,59 @@ elf32_rx_modify_headers (bfd *abfd, struct bfd_link_info *info)
   return _bfd_elf_modify_headers (abfd, info);
 }
 
+/* Issue 816133.
+    Note we intercept the elf_backend_section_flags vector rather than the
+    elf_section_from_shdr vector because the former is called from inside
+    _bfd_elf_make_section_from_shdr (which sets the LMA for sections) whereas
+    the latter is only called from some, but not all, of the places where
+    BFD sections are built from ELF header values.  */
+
+ static bool
+ rx_set_section_flags (const Elf_Internal_Shdr * hdr)
+ {
+   bfd * abfd;
+   Elf_Internal_Phdr * phdr;
+   asection * sec;
+   unsigned int i;
+
+   sec = hdr->bfd_section;
+   abfd = sec->owner;
+
+   /* We are forced to set the VADDR of segments to be the same as their PADDR
+      when they are written out to a file.  (See elf32_rx_modify_program_headers
+      above).  This means that when we read in the section headers from such a
+      modified file we can find that we have sections whoes SH_ADDR field does
+      not match up with the P_VADDR field of any program header.  This means
+      that the ELF_IS_SECTION_IN_SEGMENT macro will fail for this section and so
+      the _bfd_elf_make_section_from_shdr function call above will have defaulted
+      to setting the section's LMA to its VMA.
+
+      We want to catch this effect and compute the correct LMA for the section.  */
+
+   /* We only care about loadable sections that have real contents.  */
+   if ((hdr->bfd_section->flags & (SEC_ALLOC | SEC_LOAD)) != (SEC_ALLOC | SEC_LOAD)
+       || hdr->sh_size == 0)
+     return true;
+
+   phdr = elf_tdata (abfd)->phdr;
+
+   for (i = 0; i < elf_elfheader (abfd)->e_phnum; i++, phdr++)
+     {
+       if (phdr->p_type == PT_LOAD
+         /* We cannot use the VADDR of the segment to match to the
+            section's VMA so instead we look at file offsets.  */
+         && hdr->sh_offset >= phdr->p_offset
+         && hdr->sh_offset <  phdr->p_offset + phdr->p_filesz)
+       {
+         /* FIXME: Should we check that the section ends inside the segment as well ?  */
+         sec->lma = phdr->p_paddr + hdr->sh_offset - phdr->p_offset;
+         break;
+       }
+     }
+
+   return true;
+ }
+
 /* The default literal sections should always be marked as "code" (i.e.,
    SHF_EXECINSTR).  This is particularly important for big-endian mode
    when we do not want their contents byte reversed.  */
@@ -3829,7 +3948,7 @@ rx_table_find (struct bfd_hash_entry *vent, void *vinfo)
 	}
     }
 
-  /* Return TRUE to keep scanning, FALSE to end the traversal.  */
+  /* Return true to keep scanning, false to end the traversal.  */
   return true;
 }
 
@@ -4064,6 +4183,7 @@ rx_additional_link_map_text (bfd *obfd, struct bfd_link_info *info, FILE *mapfil
 #define elf_symbol_leading_char			('_')
 #define elf_backend_can_gc_sections		1
 #define elf_backend_modify_headers		elf32_rx_modify_headers
+#define elf_backend_section_flags		rx_set_section_flags
 
 #define bfd_elf32_bfd_reloc_type_lookup		rx_reloc_type_lookup
 #define bfd_elf32_bfd_reloc_name_lookup		rx_reloc_name_lookup

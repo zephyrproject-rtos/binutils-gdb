@@ -1,5 +1,5 @@
 /* rx-defs.h Renesas RX internal definitions
-   Copyright (C) 2008-2024 Free Software Foundation, Inc.
+   Copyright (C) 2008-2025 Free Software Foundation, Inc.
 
    This file is part of GAS, the GNU Assembler.
 
@@ -35,18 +35,33 @@
 
 enum rx_cpu_types
 {
+  RX72T,
+  RX71M,
+  RX66T,
+  RX64M,
   RX600,
   RX610,
+  RX230,
   RX200,
+  RX13T,
   RX100,
-  RXV2,
-  RXV3,
-  RXV3FPU,
+  RX140,
+  RX_CPU_UNINIT
+};
+
+enum rx_isa_types
+{
+  RX_V1 = 1,
+  RX_V2 = 2,
+  RX_V3 = 3,
+  RX_ISA_UNINIT
 };
 
 extern int rx_pid_register;
 extern int rx_gp_register;
+extern unsigned int rx_dfpu;
 extern enum rx_cpu_types rx_cpu;
+extern enum rx_isa_types rx_isa;
 
 extern int    rx_error (const char *);
 extern void   rx_lex_init (char *, char *);
@@ -54,7 +69,11 @@ extern void   rx_base1 (int);
 extern void   rx_base2 (int, int);
 extern void   rx_base3 (int, int, int);
 extern void   rx_base4 (int, int, int, int);
+extern void   rx_base5 (int, int, int, int, int);
+extern void   rx_base6 (int, int, int, int, int, int);
+extern void   rx_base7 (int, int, int, int, int, int, int);
 extern void   rx_field (int, int, int);
+extern void   rx_big_endian (int, int);
 extern void   rx_op (expressionS, int, int);
 extern void   rx_disp3 (expressionS, int);
 extern void   rx_field5s (expressionS);
