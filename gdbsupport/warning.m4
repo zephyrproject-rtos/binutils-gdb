@@ -33,6 +33,11 @@ fi
 WERROR_CFLAGS=""
 if test "${ERROR_ON_WARNING}" = yes ; then
     WERROR_CFLAGS="-Werror"
+elif test "${GDB_COMPILER_TYPE}" = clang; then
+    # Clang 16 and above treat -Wincompatible-function-pointer-types as an
+    # error regardless of -Werror being specified, so explicitly specify
+    # -Wno-error for it in case of --disable-werror.
+    WERROR_CFLAGS="-Wno-error=incompatible-function-pointer-types"
 fi
 
 # The options we'll try to enable.
