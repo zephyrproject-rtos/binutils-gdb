@@ -95,6 +95,11 @@ if test "${ERROR_ON_WARNING}" = yes ; then
     GCC_WARN_CFLAGS="$GCC_WARN_CFLAGS -Werror"
     GCC_WARN_CFLAGS_FOR_BUILD="$GCC_WARN_CFLAGS_FOR_BUILD -Werror"
     NO_WERROR="-Wno-error"
+else
+    # Clang 16 and above treat -Wincompatible-function-pointer-types as an
+    # error regardless of -Werror being specified, so explicitly specify
+    # -Wno-error for it in case of --disable-werror.
+    AC_EGREP_CPP([(^1$)],[__clang__],GCC_WARN_CFLAGS="$GCC_WARN_CFLAGS -Wno-error=incompatible-function-pointer-types")
 fi
 
 if test "${GCC}" = yes ; then
