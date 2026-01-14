@@ -13920,6 +13920,20 @@ if test "${ERROR_ON_WARNING}" = yes ; then
     GCC_WARN_CFLAGS="$GCC_WARN_CFLAGS -Werror"
     GCC_WARN_CFLAGS_FOR_BUILD="$GCC_WARN_CFLAGS_FOR_BUILD -Werror"
     NO_WERROR="-Wno-error"
+else
+    # Clang 16 and above treat -Wincompatible-function-pointer-types as an
+    # error regardless of -Werror being specified, so explicitly specify
+    # -Wno-error for it in case of --disable-werror.
+    cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+__clang__
+_ACEOF
+if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
+  $EGREP "(^1$)" >/dev/null 2>&1; then :
+  GCC_WARN_CFLAGS="$GCC_WARN_CFLAGS -Wno-error=incompatible-function-pointer-types"
+fi
+rm -f conftest*
+
 fi
 
 if test "${GCC}" = yes ; then
