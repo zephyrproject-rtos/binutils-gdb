@@ -37,10 +37,9 @@ struct private
 };
 
 static int
-rx_get_byte (void * vdata)
+rx_get_byte (RX_Data *rx_data)
 {
   bfd_byte buf[1];
-  RX_Data *rx_data = (RX_Data *) vdata;
   int status;
 
   status = rx_data->dis->read_memory_func (rx_data->addr,
