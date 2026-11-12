@@ -1446,6 +1446,11 @@ const struct v850_opcode v850_opcodes[] =
 
 { "caxi",	two (0x07e0, 0x00ee),	two (0x07e0, 0x07ff),	{R1, R2, R3},		1, PROCESSOR_V850E2_UP },
 
+{ "clip.b",	two (0x07e0, 0x0008),	two (0x07e0, 0xffff),	{R1, R2},		0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_G4 },
+{ "clip.bu",	two (0x07e0, 0x000a),	two (0x07e0, 0xffff),	{R1, R2},		0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_G4 },
+{ "clip.h",	two (0x07e0, 0x000c),	two (0x07e0, 0xffff),	{R1, R2},		0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_G4 },
+{ "clip.hu",	two (0x07e0, 0x000e),	two (0x07e0, 0xffff),	{R1, R2},		0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_G4 },
+
 { "clr1",	two (0x87c0, 0x0000),	two (0xc7e0, 0x0000),	{B3, D16, R1}, 		3, PROCESSOR_ALL },
 { "clr1",	two (0x07e0, 0x00e4),	two (0x07e0, 0xffff),   {R2, R1},    		3, PROCESSOR_NOT_V850 },
 
@@ -1592,6 +1597,8 @@ const struct v850_opcode v850_opcodes[] =
 { "ld.w",	two (0x0780, 0x0009),	two (0xffe0, 0x001f), 	{D23_ALIGN1, R1, R3}, 	2, PROCESSOR_V850E2_UP },
 { "ld.w23",	two (0x0780, 0x0009),	two (0x07e0, 0x001f), 	{D23_ALIGN1, R1, R3}, 	2, PROCESSOR_V850E2_UP | PROCESSOR_OPTION_ALIAS },
 
+{ "ldl.bu",	two (0x0fe0, 0x0370),	two (0xffe0, 0x07ff),	{R1, R3},		1, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_G4 },
+{ "ldl.hu",	two (0x0fe0, 0x0374),	two (0xffe0, 0x07ff),	{R1, R3},		1, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_G4 },
 { "ldl.w",	two (0x07e0, 0x0378),	two (0xffe0, 0x07ff),	{R1, R3}, 		1, PROCESSOR_V850E3V5_UP },
 
 { "ldsr",	two (0x07e0, 0x0020),	two (0x07e0, 0x07ff),	{R1, SR2, SELID}, 	0, PROCESSOR_V850E3V5_UP },
@@ -1664,6 +1671,8 @@ const struct v850_opcode v850_opcodes[] =
 
 { "rotl",	two (0x07e0, 0x00c6),	two (0x07e0, 0x07ff), 	{R1, R2, R3}, 		0, PROCESSOR_V850E3V5_UP },
 { "rotl",	two (0x07e0, 0x00c4),	two (0x07e0, 0x07ff), 	{I5U, R2, R3}, 		0, PROCESSOR_V850E3V5_UP },
+
+{ "resbank",	two (0x07e0, 0x8160),	two (0xffff, 0xffff),	{0},			0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_G4 },
 
 { "reti",	two (0x07e0, 0x0140),	two (0xffff, 0xffff),	{0}, 			0, PROCESSOR_ALL },
 
@@ -1748,6 +1757,8 @@ const struct v850_opcode v850_opcodes[] =
 { "st.w",	two (0x0780, 0x000f),	two (0x07e0, 0x000f), 	{R3, D23_ALIGN1, R1}, 	3, PROCESSOR_V850E2_UP },
 { "st.w23",	two (0x0780, 0x000f),	two (0x07e0, 0x000f), 	{R3, D23_ALIGN1, R1}, 	3, PROCESSOR_V850E2_UP | PROCESSOR_OPTION_ALIAS },
 
+{ "stc.b",	two (0x07e0, 0x0372),	two (0xffe0, 0x07ff),	{R3, R1},		2, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_G4 },
+{ "stc.h",	two (0x07e0, 0x0376),	two (0xffe0, 0x07ff),	{R3, R1},		2, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_G4 },
 { "stc.w",	two (0x07e0, 0x037a),	two (0xffe0, 0x07ff),	{R3, R1},		2, PROCESSOR_V850E3V5_UP },
 
 { "stsr",	two (0x07e0, 0x0040),	two (0x07e0, 0x07ff),	{SR1, R2, SELID}, 	0, PROCESSOR_V850E3V5_UP },

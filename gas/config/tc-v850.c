@@ -533,6 +533,12 @@ set_machine (int number)
 }
 
 static void
+set_g4 (int ignore ATTRIBUTE_UNUSED)
+{
+  processor_mask |= PROCESSOR_OPTION_G4;
+}
+
+static void
 v850_longcode (int type)
 {
   expressionS ex;
@@ -590,6 +596,7 @@ const pseudo_typeS md_pseudo_table[] =
   { "v850e2v3",		set_machine,		bfd_mach_v850e2v3 	},
   { "v850e2v4",		set_machine,		bfd_mach_v850e3v5 	},
   { "v850e3v5",		set_machine,		bfd_mach_v850e3v5 	},
+  { "g4",		set_g4,		0			},
   { "longcall",		v850_longcode,		1			},
   { "longjump",		v850_longcode,		2			},
   { NULL,		NULL,			0			}
@@ -790,6 +797,96 @@ static const struct reg_name system_registers[] =
 
 #define SYSREG_NAME_CNT						\
   (sizeof (system_registers) / sizeof (struct reg_name))
+
+/* This table is sorted.  Suitable for searching by a binary search.  */
+static const struct reg_name g4_system_registers[] =
+{
+  { "bmid",         65, PROCESSOR_V850E3V5_UP },
+  { "ctbp",         20, PROCESSOR_V850E3V5_UP },
+  { "ctpc",         16, PROCESSOR_V850E3V5_UP },
+  { "ctpsw",        17, PROCESSOR_V850E3V5_UP },
+  { "ebase",        35, PROCESSOR_V850E3V5_UP },
+  { "eiic",         13, PROCESSOR_V850E3V5_UP },
+  { "eipc",          0, PROCESSOR_V850E3V5_UP },
+  { "eipsw",         1, PROCESSOR_V850E3V5_UP },
+  { "eiwr",         28, PROCESSOR_V850E3V5_UP },
+  { "feic",         14, PROCESSOR_V850E3V5_UP },
+  { "fepc",          2, PROCESSOR_V850E3V5_UP },
+  { "fepsw",         3, PROCESSOR_V850E3V5_UP },
+  { "fewr",         29, PROCESSOR_V850E3V5_UP },
+  { "fpcc",          9, PROCESSOR_V850E3V5_UP },
+  { "fpcfg",        10, PROCESSOR_V850E3V5_UP },
+  { "fpec",         11, PROCESSOR_V850E3V5_UP },
+  { "fpepc",         7, PROCESSOR_V850E3V5_UP },
+  { "fpsr",          6, PROCESSOR_V850E3V5_UP },
+  { "fpst",          8, PROCESSOR_V850E3V5_UP },
+  { "iccfg",       154, PROCESSOR_V850E3V5_UP },
+  { "icctrl",      152, PROCESSOR_V850E3V5_UP },
+  { "icdath",      147, PROCESSOR_V850E3V5_UP },
+  { "icdatl",      146, PROCESSOR_V850E3V5_UP },
+  { "icerr",       156, PROCESSOR_V850E3V5_UP },
+  { "icsr",         76, PROCESSOR_V850E3V5_UP },
+  { "ictagh",      145, PROCESSOR_V850E3V5_UP },
+  { "ictagl",      144, PROCESSOR_V850E3V5_UP },
+  { "intbp",        36, PROCESSOR_V850E3V5_UP },
+  { "intcfg",       77, PROCESSOR_V850E3V5_UP },
+  { "ispr",         74, PROCESSOR_V850E3V5_UP },
+  { "lstest0",     384, PROCESSOR_V850E3V5_UP },
+  { "lstest1",     385, PROCESSOR_V850E3V5_UP },
+  { "mca",         168, PROCESSOR_V850E3V5_UP },
+  { "mcc",         170, PROCESSOR_V850E3V5_UP },
+  { "mci",         172, PROCESSOR_V850E3V5_UP },
+  { "mcr",         171, PROCESSOR_V850E3V5_UP },
+  { "mcs",         169, PROCESSOR_V850E3V5_UP },
+  { "mctl",         37, PROCESSOR_V850E3V5_UP },
+  { "mea",          70, PROCESSOR_V850E3V5_UP },
+  { "mei",          72, PROCESSOR_V850E3V5_UP },
+  { "mpat",        182, PROCESSOR_V850E3V5_UP },
+  { "mpbk",        177, PROCESSOR_V850E3V5_UP },
+  { "mpcfg",       162, PROCESSOR_V850E3V5_UP },
+  { "mpid0",       184, PROCESSOR_V850E3V5_UP },
+  { "mpid1",       185, PROCESSOR_V850E3V5_UP },
+  { "mpid2",       186, PROCESSOR_V850E3V5_UP },
+  { "mpid3",       187, PROCESSOR_V850E3V5_UP },
+  { "mpid4",       188, PROCESSOR_V850E3V5_UP },
+  { "mpid5",       189, PROCESSOR_V850E3V5_UP },
+  { "mpid6",       190, PROCESSOR_V850E3V5_UP },
+  { "mpid7",       191, PROCESSOR_V850E3V5_UP },
+  { "mpidx",       176, PROCESSOR_V850E3V5_UP },
+  { "mpla",        180, PROCESSOR_V850E3V5_UP },
+  { "mpm",         160, PROCESSOR_V850E3V5_UP },
+  { "mpua",        181, PROCESSOR_V850E3V5_UP },
+  { "peid",         64, PROCESSOR_V850E3V5_UP },
+  { "pid",          38, PROCESSOR_V850E3V5_UP },
+  { "plmr",         78, PROCESSOR_V850E3V5_UP },
+  { "pmcount0",    368, PROCESSOR_V850E3V5_UP },
+  { "pmcount1",    370, PROCESSOR_V850E3V5_UP },
+  { "pmcount2",    372, PROCESSOR_V850E3V5_UP },
+  { "pmcount3",    374, PROCESSOR_V850E3V5_UP },
+  { "pmctrl0",     369, PROCESSOR_V850E3V5_UP },
+  { "pmctrl1",     371, PROCESSOR_V850E3V5_UP },
+  { "pmctrl2",     373, PROCESSOR_V850E3V5_UP },
+  { "pmctrl3",     375, PROCESSOR_V850E3V5_UP },
+  { "pmumctrl",    360, PROCESSOR_V850E3V5_UP },
+  { "psw",           5, PROCESSOR_V850E3V5_UP },
+  { "rbase",        34, PROCESSOR_V850E3V5_UP },
+  { "rbcr0",        79, PROCESSOR_V850E3V5_UP },
+  { "rbcr1",        80, PROCESSOR_V850E3V5_UP },
+  { "rbip",         82, PROCESSOR_V850E3V5_UP },
+  { "rbnr",         81, PROCESSOR_V850E3V5_UP },
+  { "scbp",         44, PROCESSOR_V850E3V5_UP },
+  { "sccfg",        43, PROCESSOR_V850E3V5_UP },
+  { "snzcfg",       21, PROCESSOR_V850E3V5_UP },
+  { "spid",         32, PROCESSOR_V850E3V5_UP },
+  { "spidlist",     33, PROCESSOR_V850E3V5_UP },
+  { "svlock",       40, PROCESSOR_V850E3V5_UP },
+  { "tscounth",    353, PROCESSOR_V850E3V5_UP },
+  { "tscountl",    352, PROCESSOR_V850E3V5_UP },
+  { "tsctrl",      354, PROCESSOR_V850E3V5_UP },
+};
+
+#define G4_SYSREG_NAME_CNT					\
+  (sizeof (g4_system_registers) / sizeof (struct reg_name))
 
 
 static const struct reg_name cc_names[] =
@@ -1054,8 +1151,13 @@ system_register_name (expressionS *expressionP,
   /* Find the spelling of the operand.  */
   start = input_line_pointer;
   c = get_symbol_name (&name);
-  reg_number = reg_name_search (system_registers, SYSREG_NAME_CNT, name,
-				accept_numbers);
+  reg_number = -1;
+  if (processor_mask & PROCESSOR_OPTION_G4)
+    reg_number = reg_name_search (g4_system_registers, G4_SYSREG_NAME_CNT,
+				  name, accept_numbers);
+  if (reg_number < 0)
+    reg_number = reg_name_search (system_registers, SYSREG_NAME_CNT, name,
+				  accept_numbers);
 
   /* Put back the delimiting char.  */
   (void) restore_line_pointer (c);
@@ -1548,6 +1650,7 @@ md_show_usage (FILE *stream)
   fprintf (stream, _("  --disp-size-default-22    branch displacement with unknown size is 22 bits (default)\n"));
   fprintf (stream, _("  --disp-size-default-32    branch displacement with unknown size is 32 bits\n"));
   fprintf (stream, _("  -mextension               enable extension opcode support\n"));
+  fprintf (stream, _("  -mg4                      enable RH850 G4 opcode support\n"));
   fprintf (stream, _("  -mno-bcond17		  disable b<cond> disp17 instruction\n"));
   fprintf (stream, _("  -mno-stld23		  disable st/ld offset23 instruction\n"));
   fprintf (stream, _("  -mgcc-abi                 Mark the binary as using the old GCC ABI\n"));
@@ -1620,6 +1723,10 @@ md_parse_option (int c, const char *arg)
   else if (strcmp (arg, "extension") == 0)
     {
       processor_mask |= PROCESSOR_OPTION_EXTENSION | PROCESSOR_OPTION_ALIAS;
+    }
+  else if (strcmp (arg, "g4") == 0)
+    {
+      processor_mask |= PROCESSOR_OPTION_G4;
     }
   else if (strcmp (arg, "no-bcond17") == 0)
     {

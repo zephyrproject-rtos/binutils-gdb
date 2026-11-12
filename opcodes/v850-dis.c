@@ -170,6 +170,108 @@ get_operand_value (const struct v850_operand *operand,
   return value;
 }
 
+static bool v850_g4_sregs;
+
+static const char *
+get_v850_g4_sreg_name (unsigned int reg)
+{
+  static const struct
+  {
+    unsigned int value;
+    const char *name;
+  } v850_g4_sreg_names[] =
+  {
+    {   0, "eipc" },
+    {   1, "eipsw" },
+    {   2, "fepc" },
+    {   3, "fepsw" },
+    {   5, "psw" },
+    {   6, "fpsr" },
+    {   7, "fpepc" },
+    {   8, "fpst" },
+    {   9, "fpcc" },
+    {  10, "fpcfg" },
+    {  11, "fpec" },
+    {  13, "eiic" },
+    {  14, "feic" },
+    {  16, "ctpc" },
+    {  17, "ctpsw" },
+    {  20, "ctbp" },
+    {  21, "snzcfg" },
+    {  28, "eiwr" },
+    {  29, "fewr" },
+    {  32, "spid" },
+    {  33, "spidlist" },
+    {  34, "rbase" },
+    {  35, "ebase" },
+    {  36, "intbp" },
+    {  37, "mctl" },
+    {  38, "pid" },
+    {  40, "svlock" },
+    {  43, "sccfg" },
+    {  44, "scbp" },
+    {  64, "peid" },
+    {  65, "bmid" },
+    {  70, "mea" },
+    {  72, "mei" },
+    {  74, "ispr" },
+    {  76, "icsr" },
+    {  77, "intcfg" },
+    {  78, "plmr" },
+    {  79, "rbcr0" },
+    {  80, "rbcr1" },
+    {  81, "rbnr" },
+    {  82, "rbip" },
+    { 144, "ictagl" },
+    { 145, "ictagh" },
+    { 146, "icdatl" },
+    { 147, "icdath" },
+    { 152, "icctrl" },
+    { 154, "iccfg" },
+    { 156, "icerr" },
+    { 160, "mpm" },
+    { 162, "mpcfg" },
+    { 168, "mca" },
+    { 169, "mcs" },
+    { 170, "mcc" },
+    { 171, "mcr" },
+    { 172, "mci" },
+    { 176, "mpidx" },
+    { 177, "mpbk" },
+    { 180, "mpla" },
+    { 181, "mpua" },
+    { 182, "mpat" },
+    { 184, "mpid0" },
+    { 185, "mpid1" },
+    { 186, "mpid2" },
+    { 187, "mpid3" },
+    { 188, "mpid4" },
+    { 189, "mpid5" },
+    { 190, "mpid6" },
+    { 191, "mpid7" },
+    { 352, "tscountl" },
+    { 353, "tscounth" },
+    { 354, "tsctrl" },
+    { 360, "pmumctrl" },
+    { 368, "pmcount0" },
+    { 369, "pmctrl0" },
+    { 370, "pmcount1" },
+    { 371, "pmctrl1" },
+    { 372, "pmcount2" },
+    { 373, "pmctrl2" },
+    { 374, "pmcount3" },
+    { 375, "pmctrl3" },
+    { 384, "lstest0" },
+    { 385, "lstest1" },
+  };
+  unsigned int i;
+
+  for (i = 0; i < ARRAY_SIZE (v850_g4_sreg_names); i++)
+    if (v850_g4_sreg_names[i].value == reg)
+      return v850_g4_sreg_names[i].name;
+  return NULL;
+}
+
 static const char *
 get_v850_sreg_name (unsigned int reg)
 {
@@ -431,6 +533,8 @@ disassemble (bfd_vma memaddr,
 		  square = true;
 		}
 	      else if (   (strcmp ("stc.w", op->name) == 0
+			|| strcmp ("stc.b", op->name) == 0
+			|| strcmp ("stc.h", op->name) == 0
 			|| strcmp ("cache", op->name) == 0
 			|| strcmp ("pref",  op->name) == 0)
 		       && opnum == 2 && opnum == memop)
@@ -491,7 +595,18 @@ disassemble (bfd_vma memaddr,
 		  info->fprintf_func (info->stream, "ep");
 		  break;
 		case V850_OPERAND_SRG:
-		  info->fprintf_func (info->stream, "%s", get_v850_sreg_name (value));
+		  if (v850_g4_sregs && info->mach == bfd_mach_v850e3v5)
+		    {
+		      const char *name = get_v850_g4_sreg_name (value);
+
+		      if (name != NULL)
+			info->fprintf_func (info->stream, "%s", name);
+		      else
+			info->fprintf_func (info->stream, "%ld", value & 0x1f);
+		    }
+		  else
+		    info->fprintf_func (info->stream, "%s",
+					get_v850_sreg_name (value));
 		  break;
 		case V850E_OPERAND_REG_LIST:
 		  {
@@ -651,6 +766,19 @@ print_insn_v850 (bfd_vma memaddr, struct disassemble_info * info)
   int length = 0, code_length = 0;
   unsigned long insn = 0, insn2 = 0;
   int target_processor;
+  const char *opt;
+
+  v850_g4_sregs = false;
+  if (info->disassembler_options != NULL)
+    FOR_EACH_DISASSEMBLER_OPTION (opt, info->disassembler_options)
+      {
+	if (disassembler_options_cmp (opt, "g4") == 0)
+	  v850_g4_sregs = true;
+	else
+	  /* xgettext:c-format */
+	  opcodes_error_handler (_("unrecognised disassembler option: %s"),
+				 opt);
+      }
 
   switch (info->mach)
     {
@@ -850,4 +978,13 @@ print_insn_v850 (bfd_vma memaddr, struct disassemble_info * info)
     }
 
   return code_length;
+}
+
+void
+print_v850_disassembler_options (FILE *stream)
+{
+  fprintf (stream, _("\n\
+The following V850 specific disassembler options are supported for use\n\
+with the -M switch:\n"));
+  fprintf (stream, _("  g4  Print RH850 G4 system register names.\n"));
 }

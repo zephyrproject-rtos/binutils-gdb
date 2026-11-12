@@ -90,6 +90,16 @@ Specifies that the assembled code should be marked as being targeted at
 the V850E3V5 processor.  This allows the linker to detect attempts to link
 such code with code assembled for other processors.
 
+@cindex @code{-mg4} command-line option, V850
+@item -mg4
+Enables the instructions of the RH850 G4 cores (G4KH, G4MH):
+@code{clip.b}, @code{clip.bu}, @code{clip.h}, @code{clip.hu},
+@code{ldl.bu}, @code{ldl.hu}, @code{stc.b}, @code{stc.h} and
+@code{resbank}.  It also selects the RH850 G4 system register names:
+a name such as @code{pid} or @code{rbnr} selects both the register
+number and the selection ID, so @samp{stsr pid, r10} is
+@samp{stsr 6, r10, 1}.  Use it together with @option{-mv850e3v5}.
+
 @cindex @code{-mrelax} command-line option, V850
 @item -mrelax
 Enables relaxation.  This allows the .longcall and .longjump pseudo
@@ -338,6 +348,11 @@ such code with code assembled for other processors.
 Specifies that the assembled code should be marked as being targeted at
 the V850E3V5 processor.  This allows the linker to detect attempts to link
 such code with code assembled for other processors.
+
+@cindex @code{.g4} directive, V850
+@item .g4
+Enables the RH850 G4 instructions and system register names from this
+point on, as @option{-mg4} does.
 
 @end table
 
