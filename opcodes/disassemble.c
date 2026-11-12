@@ -578,6 +578,9 @@ disassembler_usage (FILE *stream ATTRIBUTE_UNUSED)
 #ifdef ARCH_s390
   print_s390_disassembler_options (stream);
 #endif
+#ifdef ARCH_v850
+  print_v850_disassembler_options (stream);
+#endif
 #ifdef ARCH_wasm32
   print_wasm32_disassembler_options (stream);
 #endif
