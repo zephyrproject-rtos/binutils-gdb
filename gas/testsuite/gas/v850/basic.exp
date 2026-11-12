@@ -438,4 +438,8 @@ if [istarget v850*-*-*] then {
     run_dump_test "v850e1"
     run_dump_test "split-lo16"
     run_dump_test "pr19937"
+    run_dump_test "disp-range"
+    run_dump_test "disp-range-bad"
+    run_dump_test "loop-relax"
+    run_dump_test "loop-relax-bad"
 }
