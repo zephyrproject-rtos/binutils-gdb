@@ -1,0 +1,52 @@
+# v850 FPSR.XP after FP instructions with the exceptions disabled, and the
+# sign of an exact zero sum when rounding toward -inf
+# mach: v850e3v5
+
+	.include "testutils.inc"
+
+	.macro	xp fpsr op r_a r_b want
+	seti	\fpsr, r20
+	ldsr	r20, 6, 0
+	seti	\r_a, r1
+	seti	\r_b, r2
+	\op	r2, r1, r3
+	stsr	6, r21, 0
+	andi	0x1f, r21, r21
+	reg	r21, \want
+	.endm
+
+# inexact: 1 + 2^-30
+	xp	0x00020000, addf.s, 0x3f800000, 0x30800000, 0x01
+# invalid: 0 / 0
+	xp	0x00020000, divf.s, 0x00000000, 0x00000000, 0x10
+# divide by zero: 1 / 0
+	xp	0x00020000, divf.s, 0x3f800000, 0x00000000, 0x08
+# overflow and inexact: 2^100 * 2^100
+	xp	0x00020000, mulf.s, 0x71800000, 0x71800000, 0x05
+# exact: 1 + 1
+	xp	0x00020000, addf.s, 0x3f800000, 0x3f800000, 0x00
+# XP is sticky
+	seti	0x00020001, r20
+	ldsr	r20, 6, 0
+	addf.s	r1, r1, r3
+	stsr	6, r21, 0
+	andi	0x1f, r21, r21
+	reg	r21, 0x01
+
+# 1 - 1 is -0 when rounding toward -inf and +0 otherwise
+	seti	0x3f800000, r1
+	seti	0x000e0000, r20
+	ldsr	r20, 6, 0
+	subf.s	r1, r1, r3
+	reg	r3, 0x80000000
+	seti	0xbf800000, r2
+	addf.s	r2, r1, r3
+	reg	r3, 0x80000000
+	seti	0x00020000, r20
+	ldsr	r20, 6, 0
+	subf.s	r1, r1, r3
+	reg	r3, 0x00000000
+	addf.s	r2, r1, r3
+	reg	r3, 0x00000000
+
+	pass

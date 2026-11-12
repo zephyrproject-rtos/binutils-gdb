@@ -2804,25 +2804,175 @@ OP_307E0 (void)
   sim_fpu_status_denorm = 16384,				----U (sim spec.)
 */  
     
+static int fpu_input_flushed;
+
+void
+v850_fpu_32to (sim_fpu *f, uint32_t s)
+{
+  SIM_DESC sd = simulator;
+
+  sim_fpu_32to (f, s);
+  if ((FPSR & FPSR_FS) && sim_fpu_is_denorm (f))
+    {
+      sim_fpu_32to (f, s & 0x80000000);
+      FPSR |= FPSR_IF;
+      fpu_input_flushed = 1;
+    }
+}
+
+void
+v850_fpu_232to (sim_fpu *f, uint32_t h, uint32_t l)
+{
+  SIM_DESC sd = simulator;
+
+  sim_fpu_232to (f, h, l);
+  if ((FPSR & FPSR_FS) && sim_fpu_is_denorm (f))
+    {
+      sim_fpu_232to (f, h & 0x80000000, 0);
+      FPSR |= FPSR_IF;
+      fpu_input_flushed = 1;
+    }
+}
+
+static int
+v850_fpu_flush_result (sim_fpu *f, sim_fpu_round round, int double_p)
+{
+  SIM_DESC sd = simulator;
+  int emin = double_p ? -1022 : -126;
+  int to_min;
+
+  if (!(FPSR & FPSR_FS)
+      || f->class != sim_fpu_class_number
+      || f->normal_exp >= emin)
+    return 0;
+
+  switch (round)
+    {
+    case sim_fpu_round_up:
+      to_min = !f->sign;
+      break;
+    case sim_fpu_round_down:
+      to_min = f->sign;
+      break;
+    case sim_fpu_round_near:
+      to_min = (FPSR & FPSR_FN) && f->normal_exp == emin - 1;
+      break;
+    default:
+      to_min = 0;
+      break;
+    }
+
+  if (double_p)
+    sim_fpu_232to (f, ((f->sign ? 0x80000000 : 0)
+		       | (to_min ? 0x00100000 : 0)), 0);
+  else
+    sim_fpu_32to (f, (f->sign ? 0x80000000 : 0) | (to_min ? 0x00800000 : 0));
+  return sim_fpu_status_underflow | sim_fpu_status_inexact;
+}
+
+int
+v850_fpu_round_32 (sim_fpu *f, sim_fpu_round round, sim_fpu_denorm denorm)
+{
+  int status = v850_fpu_flush_result (f, round, 0);
+
+  return status ? status : sim_fpu_round_32 (f, round, denorm);
+}
+
+int
+v850_fpu_round_64 (sim_fpu *f, sim_fpu_round round, sim_fpu_denorm denorm)
+{
+  int status = v850_fpu_flush_result (f, round, 1);
+
+  return status ? status : sim_fpu_round_64 (f, round, denorm);
+}
+
+/* Give an exact zero result of L + R, or of L - R when SUB_P, the sign
+   that IEEE 754 defines: the common sign of two zeros of the same sign,
+   else -0 when ROUND is toward -inf and +0 otherwise.  */
+
+void
+v850_fpu_sum_zero (sim_fpu *ans, const sim_fpu *l, const sim_fpu *r,
+		   int sub_p, sim_fpu_status status, sim_fpu_round round)
+{
+  int rsign = r->sign ^ (sub_p != 0);
+
+  if (!sim_fpu_is_zero (ans)
+      || (status & (sim_fpu_status_inexact | sim_fpu_status_rounded
+		    | sim_fpu_status_underflow)))
+    return;
+  if (sim_fpu_is_zero (l) && sim_fpu_is_zero (r) && l->sign == rsign)
+    ans->sign = l->sign;
+  else
+    ans->sign = round == sim_fpu_round_down;
+}
+
+/* Return 0 for a number, 1 for a QNaN and 2 for an SNaN.  */
+
+static int
+v850_nan_class (uint64_t x, int double_p)
+{
+  if (double_p)
+    {
+      if ((x & 0x7ff0000000000000ULL) != 0x7ff0000000000000ULL
+	  || (x & 0x000fffffffffffffULL) == 0)
+	return 0;
+      return (x & 0x0008000000000000ULL) ? 1 : 2;
+    }
+  if ((x & 0x7f800000) != 0x7f800000 || (x & 0x007fffff) == 0)
+    return 0;
+  return (x & 0x00400000) ? 1 : 2;
+}
+
+
+void
+v850_fpu_nan_result (sim_fpu *ans, int out_double_p, int in_double_p, int n,
+		     const uint64_t *ops)
+{
+  int i, q = -1;
+
+  if (!sim_fpu_is_nan (ans))
+    return;
+  for (i = 0; i < n; i++)
+    {
+      int c = v850_nan_class (ops[i], in_double_p);
+
+      if (c == 2)
+	{
+	  q = -2;
+	  break;
+	}
+      if (c == 1 && q == -1)
+	q = i;
+    }
+  if (q >= 0)
+    {
+      if (in_double_p && out_double_p)
+	sim_fpu_232to (ans, ops[q] >> 32, ops[q] & 0xffffffff);
+      else if (!in_double_p && !out_double_p)
+	sim_fpu_32to (ans, ops[q]);
+      return;
+    }
+  if (out_double_p)
+    sim_fpu_232to (ans, 0x7fffffff, 0xffffffff);
+  else
+    sim_fpu_32to (ans, 0x7fffffff);
+}
+
 void
 update_fpsr (SIM_DESC sd, sim_fpu_status status, unsigned int mask, unsigned int double_op_p)
 {
-  unsigned int fpsr = FPSR & mask;
+  unsigned int causes = 0;
 
-  unsigned int flags = 0;
+  if (fpu_input_flushed
+      && !(status & (sim_fpu_status_invalid_snan | sim_fpu_status_invalid_isi
+		     | sim_fpu_status_invalid_idi | sim_fpu_status_invalid_zdz
+		     | sim_fpu_status_invalid_imz | sim_fpu_status_invalid_cvi
+		     | sim_fpu_status_invalid_div0
+		     | sim_fpu_status_invalid_sqrt)))
+    status |= sim_fpu_status_inexact;
+  fpu_input_flushed = 0;
 
-  if (fpsr & FPSR_XEI
-      && ((status & (sim_fpu_status_rounded
-		     | sim_fpu_status_overflow
-		     | sim_fpu_status_inexact))
-	  || (status & sim_fpu_status_underflow
-	      && (fpsr & (FPSR_XEU | FPSR_XEI)) == 0
-	      && fpsr & FPSR_FS)))
-    {
-      flags |= FPSR_XCI | FPSR_XPI;
-    }
-
-  if (fpsr & FPSR_XEV
+  if ((mask & FPSR_XEV)
       && (status & (sim_fpu_status_invalid_isi
 		    | sim_fpu_status_invalid_imz
 		    | sim_fpu_status_invalid_zdz
@@ -2830,36 +2980,48 @@ update_fpsr (SIM_DESC sd, sim_fpu_status status, unsigned int mask, unsigned int
 		    | sim_fpu_status_invalid_cvi
 		    | sim_fpu_status_invalid_sqrt
 		    | sim_fpu_status_invalid_snan)))
-    {
-      flags |= FPSR_XCV | FPSR_XPV;
-    }
+    causes |= FPSR_XPV;
 
-  if (fpsr & FPSR_XEZ
+  if ((mask & FPSR_XEZ)
       && (status & sim_fpu_status_invalid_div0))
-    {
-      flags |= FPSR_XCV | FPSR_XPV;
-    }
+    causes |= FPSR_XPZ;
 
-  if (fpsr & FPSR_XEO
+  if ((mask & FPSR_XEO)
       && (status & sim_fpu_status_overflow))
-    {
-      flags |= FPSR_XCO | FPSR_XPO;
-    }
-      
-  if (((fpsr & FPSR_XEU) || (fpsr & FPSR_FS) == 0)
+    causes |= FPSR_XPO;
+
+  if ((mask & FPSR_XEU)
       && (status & (sim_fpu_status_underflow
 		    | sim_fpu_status_denorm)))
     {
-      flags |= FPSR_XCU | FPSR_XPU;
+      causes |= FPSR_XPU;
+      if ((FPSR & FPSR_FS) && !(FPSR & FPSR_XEU))
+	causes |= FPSR_XPI;
     }
 
-  if (flags)
-    {
-      FPSR &= ~FPSR_XC;
-      FPSR |= flags;
+  if ((mask & FPSR_XEI)
+      && (status & (sim_fpu_status_rounded
+		    | sim_fpu_status_overflow
+		    | sim_fpu_status_inexact)))
+    causes |= FPSR_XPI;
 
+  update_fpsr_causes (sd, causes, double_op_p);
+}
+
+/* Record the exception CAUSES (FPSR.XP bit layout) of an FP instruction:
+   enabled causes raise an exception with XC set to all causes, other
+   causes set their XP bits.  */
+
+void
+update_fpsr_causes (SIM_DESC sd, unsigned int causes, unsigned int double_op_p)
+{
+  if (causes & (FPSR & FPSR_XE) >> 5)
+    {
+      FPSR = (FPSR & ~FPSR_XC) | (causes << 10);
       SignalExceptionFPE (sd, double_op_p);
     }
+  else
+    FPSR |= causes;
 }
 
 /* Exception.  */
@@ -2890,19 +3052,6 @@ SignalExceptionFPE (SIM_DESC sd, unsigned int double_op_p)
     }								
 }
 
-void
-check_invalid_snan (SIM_DESC sd, sim_fpu_status status, unsigned int double_op_p)
-{
-  if ((FPSR & FPSR_XEI)
-      && (status & sim_fpu_status_invalid_snan))
-    {
-      FPSR &= ~FPSR_XC;
-      FPSR |= FPSR_XCV;
-      FPSR |= FPSR_XPV;
-      SignalExceptionFPE (sd, double_op_p);
-    }
-}
-
 int
 v850_float_compare (SIM_DESC sd, int cmp, sim_fpu wop1, sim_fpu wop2, int double_op_p)
 {
@@ -2911,13 +3060,7 @@ v850_float_compare (SIM_DESC sd, int cmp, sim_fpu wop1, sim_fpu wop2, int double
   if (sim_fpu_is_nan (&wop1) || sim_fpu_is_nan (&wop2))
     {
       if (cmp & 0x8)
-	{
-	  if (FPSR & FPSR_XEV)
-	    {
-	      FPSR |= FPSR_XCV | FPSR_XPV;
-	      SignalExceptionFPE (sd, double_op_p);
-	    }
-	}
+	update_fpsr_causes (sd, FPSR_XPV, double_op_p);
 
       switch (cmp)
 	{

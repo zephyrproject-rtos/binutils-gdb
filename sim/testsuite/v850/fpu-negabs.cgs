@@ -1,0 +1,26 @@
+# v850 negf and absf of a NaN change only the sign bit
+# mach: v850e3v5
+
+	.include "testutils.inc"
+
+	seti	0x00020000, r20
+	ldsr	r20, 6, 0
+
+	seti	0x7fc00001, r1
+	negf.s	r1, r3
+	reg	r3, 0xffc00001
+	seti	0xffc00001, r1
+	absf.s	r1, r3
+	reg	r3, 0x7fc00001
+
+	seti	0x00000001, r4
+	seti	0x7ff80000, r5
+	negf.d	r4, r6
+	reg	r7, 0xfff80000
+	reg	r6, 0x00000001
+	seti	0xfff80000, r5
+	absf.d	r4, r6
+	reg	r7, 0x7ff80000
+	reg	r6, 0x00000001
+
+	pass

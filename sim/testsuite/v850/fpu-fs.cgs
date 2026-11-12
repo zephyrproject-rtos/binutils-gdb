@@ -1,0 +1,83 @@
+# v850 FPSR.FS flush of subnormal operands and results
+# mach: v850e3v5
+
+	.include "testutils.inc"
+
+	.macro	fpsr val
+	seti	\val, r20
+	ldsr	r20, 6, 0
+	.endm
+
+	.macro	fpsr_if exp
+	stsr	6, r20, 0
+	seti	0x00400000, r21
+	and	r21, r20
+	reg	r20, \exp
+	.endm
+
+	seti	0x3f800000, r1
+
+# Input operand: +-subnormal becomes +-0 and sets FPSR.IF
+	fpsr	0x00020000
+	seti	0x00000001, r2
+	mulf.s	r1, r2, r3
+	reg	r3, 0
+	fpsr_if	0x00400000
+	fpsr	0x00020000
+	seti	0x80000001, r2
+	mulf.s	r1, r2, r3
+	reg	r3, 0x80000000
+
+# ABSF.S does not flush its operand
+	seti	0x80000001, r2
+	absf.s	r2, r3
+	reg	r3, 0x00000001
+
+# Result: 2^-100 * 2^-30 is subnormal before rounding
+	seti	0x0d800000, r4
+	seti	0x30800000, r5
+	seti	0x8d800000, r6
+
+	fpsr	0x00020000
+	mulf.s	r4, r5, r3
+	reg	r3, 0
+	fpsr_if	0
+	fpsr	0x00060000
+	mulf.s	r4, r5, r3
+	reg	r3, 0
+	fpsr	0x000a0000
+	mulf.s	r4, r5, r3
+	reg	r3, 0x00800000
+	mulf.s	r6, r5, r3
+	reg	r3, 0x80000000
+	fpsr	0x000e0000
+	mulf.s	r4, r5, r3
+	reg	r3, 0
+	mulf.s	r6, r5, r3
+	reg	r3, 0x80800000
+
+# RN with FN: 1.5 * 2^-127 goes to 2^-126, 2^-130 to 0
+	seti	0x20400000, r7
+	seti	0x1f800000, r8
+	fpsr	0x00820000
+	mulf.s	r7, r8, r3
+	reg	r3, 0x00800000
+	mulf.s	r4, r5, r3
+	reg	r3, 0
+
+# Double: 2^-600 * 2^-500 is flushed to +0
+	mov	0, r10
+	seti	0x1a700000, r11
+	mov	0, r12
+	seti	0x20b00000, r13
+	fpsr	0x00020000
+	mulf.d	r10, r12, r14
+	reg	r14, 0
+	reg	r15, 0
+
+# FS = 0 keeps the subnormal result
+	fpsr	0x00000000
+	mulf.s	r4, r5, r3
+	reg	r3, 0x00080000
+
+	pass

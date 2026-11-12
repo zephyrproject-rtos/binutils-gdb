@@ -1,0 +1,19 @@
+# v850e3v5 ldsr and stsr reach the FPU system registers at selID 0
+# without BSEL, FPCFG shows the FPSR.RM written through FPSR
+# mach: v850e3v5
+
+	.include "testutils.inc"
+
+	seti	0x000e0000, r20
+	ldsr	r20, 6, 0
+	stsr	6, r21, 0
+	reg	r21, 0x000e0000
+	stsr	10, r22, 0
+	reg	r22, 0x00000180
+
+	seti	0x00020000, r20
+	ldsr	r20, 6, 0
+	stsr	10, r22, 0
+	reg	r22, 0x00000000
+
+	pass

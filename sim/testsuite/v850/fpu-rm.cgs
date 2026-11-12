@@ -1,0 +1,24 @@
+# v850 FPSR.RM rounding modes
+# mach: v850e3v5
+
+	.include "testutils.inc"
+
+	.macro	fdiv rm r_pos r_neg
+	seti	\rm, r20
+	ldsr	r20, 6, 0
+	divf.s	r2, r1, r3
+	reg	r3, \r_pos
+	divf.s	r2, r4, r3
+	reg	r3, \r_neg
+	.endm
+
+	seti	0x3f800000, r1
+	seti	0x40400000, r2
+	seti	0xbf800000, r4
+
+	fdiv	0x00000000, 0x3eaaaaab, 0xbeaaaaab
+	fdiv	0x00040000, 0x3eaaaaaa, 0xbeaaaaaa
+	fdiv	0x00080000, 0x3eaaaaab, 0xbeaaaaaa
+	fdiv	0x000c0000, 0x3eaaaaaa, 0xbeaaaaab
+
+	pass

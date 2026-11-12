@@ -94,8 +94,6 @@ unsigned long Add32 (unsigned long a1, unsigned long a2, int * carry);
   invalid, inexact, overflow, underflow
  */
 
-extern void check_invalid_snan (SIM_DESC sd, sim_fpu_status, unsigned int);
-
 #define check_cvt_fi(sd, status, double_op_p)                   \
         update_fpsr (sd, status, FPSR_XEV | FPSR_XEI, double_op_p)
 
@@ -106,6 +104,15 @@ extern void check_invalid_snan (SIM_DESC sd, sim_fpu_status, unsigned int);
         update_fpsr (sd, status, FPSR_XEV | FPSR_XEI | FPSR_XEO | FPSR_XEU, double_op_p)
 
 extern void update_fpsr (SIM_DESC sd, sim_fpu_status, unsigned int, unsigned int);
+extern void update_fpsr_causes (SIM_DESC sd, unsigned int, unsigned int);
+extern void v850_fpu_nan_result (sim_fpu *, int, int, int, const uint64_t *);
+#define V850_GR64(r) (((uint64_t) GR[(r) + 1] << 32) | GR[r])
+extern void v850_fpu_sum_zero (sim_fpu *, const sim_fpu *, const sim_fpu *, int,
+			       sim_fpu_status, sim_fpu_round);
+extern void v850_fpu_32to (sim_fpu *, uint32_t);
+extern void v850_fpu_232to (sim_fpu *, uint32_t, uint32_t);
+extern int v850_fpu_round_32 (sim_fpu *, sim_fpu_round, sim_fpu_denorm);
+extern int v850_fpu_round_64 (sim_fpu *, sim_fpu_round, sim_fpu_denorm);
 
 
 /*
