@@ -71,6 +71,7 @@ struct v850_opcode
 #define opt_ALIAS      (opt_EXTENSION + 1)
 #define opt_G4         (opt_ALIAS + 1)
 #define opt_G4MH2      (opt_G4 + 1)
+#define opt_FXU        (opt_G4MH2 + 1)
 
 /* Values for the processors field in the v850_opcode structure.  */
 #define PROCESSOR_V850       (1 << (arch_V850))     /* Just the V850.  */
@@ -97,6 +98,7 @@ struct v850_opcode
 #define PROCESSOR_OPTION_ALIAS     (1 << (opt_ALIAS))                      /* Enable alias opcodes.  */
 #define PROCESSOR_OPTION_G4        (1 << (opt_G4))                         /* Enable RH850 G4 opcodes.  */
 #define PROCESSOR_OPTION_G4MH2     (1 << (opt_G4MH2))                      /* Enable RH850 G4MH2 opcodes.  */
+#define PROCESSOR_OPTION_FXU       (1 << (opt_FXU))                        /* Enable RH850 FXU opcodes.  */
 
 #define SET_PROCESSOR_MASK(mask,set)	((mask) = ((mask) & ~PROCESSOR_MASK) | (set))
 
@@ -242,6 +244,18 @@ extern const struct v850_operand v850_operands[];
 
 /* A PC-relative displacement where a positive value indicates a backwards displacement.  */
 #define V850_INVERSE_PCREL	0x1000000
+
+/* This operand names an FXU vector register.  */
+#define V850_OPERAND_WREG	0x2000000
+
+/* This operand is in the third halfword of a 48-bit instruction.  */
+#define V850_OPERAND_EXT16	0x4000000
+
+/* Bit 11 of this third halfword operand is in bit 21.  */
+#define V850_OPERAND_IMM12	0x8000000
+
+/* This operand names an FXU comparison condition.  */
+#define V850_OPERAND_FXCC	0x10000000
 
 extern int v850_msg_is_out_of_range (const char *);
 
