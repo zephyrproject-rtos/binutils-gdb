@@ -3285,7 +3285,13 @@ md_assemble (char *str)
 	  fixS *fixP;
 
 	  if (!reloc_howto)
-	    abort ();
+	    {
+	      as_bad (_("%s: relocation %s is not supported by the %s ABI"),
+		      copy_of_instruction, bfd_get_reloc_code_name (reloc),
+		      v850_target_arch == bfd_arch_v850_rh850
+		      ? "rh850" : "gcc");
+	      continue;
+	    }
 
 	  size = bfd_get_reloc_size (reloc_howto);
 
@@ -3704,6 +3710,11 @@ parse_cons_expression_v850 (expressionS *exp)
 
   /* See if there's a reloc prefix like hi() we have to handle.  */
   r = v850_reloc_prefix (NULL, &errmsg);
+  if (r == BFD_RELOC_64)
+    {
+      as_bad ("%s", errmsg);
+      r = BFD_RELOC_NONE;
+    }
 
   /* Do normal expression parsing.  */
   expression (exp);

@@ -442,4 +442,6 @@ if [istarget v850*-*-*] then {
     run_dump_test "disp-range-bad"
     run_dump_test "loop-relax"
     run_dump_test "loop-relax-bad"
+    run_dump_test "reloc-no-type"
+    run_dump_test "data-prefix-err"
 }

@@ -18,4 +18,8 @@
 
 if [istarget v850*-*-*] {
     run_dump_test "split-lo16"
+    run_dump_test "rh850-zda"
+    run_dump_test "rh850-zda-overflow"
+    run_dump_test "zda-gcc-abi"
+    run_dump_test "zda-gcc-abi-neg"
 }
