@@ -100,6 +100,15 @@ a name such as @code{pid} or @code{rbnr} selects both the register
 number and the selection ID, so @samp{stsr pid, r10} is
 @samp{stsr 6, r10, 1}.  Use it together with @option{-mv850e3v5}.
 
+@cindex @code{-mg4mh2} command-line option, V850
+@item -mg4mh2
+Enables everything that @option{-mg4} enables and the RH850 G4MH2
+instructions @code{ldm.mp}, @code{stm.mp}, @code{ldm.gsr} and
+@code{stm.gsr}, and the G4MH2 system register names, including the
+virtualization and guest context registers.  The G4MH2 names replace
+the G4 names where the two differ, for example the performance counter
+registers.
+
 @cindex @code{-mrelax} command-line option, V850
 @item -mrelax
 Enables relaxation.  This allows the .longcall and .longjump pseudo
@@ -353,6 +362,11 @@ such code with code assembled for other processors.
 @item .g4
 Enables the RH850 G4 instructions and system register names from this
 point on, as @option{-mg4} does.
+
+@cindex @code{.g4mh2} directive, V850
+@item .g4mh2
+Enables the RH850 G4MH2 instructions and system register names from
+this point on, as @option{-mg4mh2} does.
 
 @end table
 

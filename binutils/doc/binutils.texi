@@ -2766,9 +2766,10 @@ of the function being wrongly disassembled.
 
 For V850, @option{-M g4} prints the system register operands of
 @code{ldsr} and @code{stsr} with their RH850 G4 names, using both the
-register number and the selection ID.  A register number and selection
-ID pair without a name is printed as a number.  Without this option the
-names are those of the older V850 cores.
+register number and the selection ID.  @option{-M g4mh2} does the same
+with the RH850 G4MH2 names.  A register number and selection ID pair
+without a name is printed as a number.  Without these options the names
+are those of the older V850 cores.
 
 @item -p
 @itemx --private-headers

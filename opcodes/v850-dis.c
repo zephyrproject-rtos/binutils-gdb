@@ -272,6 +272,157 @@ get_v850_g4_sreg_name (unsigned int reg)
   return NULL;
 }
 
+static bool v850_g4mh2_sregs;
+
+static const char *
+get_v850_g4mh2_sreg_name (unsigned int reg)
+{
+  static const struct
+  {
+    unsigned int value;
+    const char *name;
+  } v850_g4mh2_sreg_names[] =
+  {
+    {   0, "eipc" },
+    {   1, "eipsw" },
+    {   2, "fepc" },
+    {   3, "fepsw" },
+    {   5, "psw" },
+    {   6, "fpsr" },
+    {   7, "fpepc" },
+    {   8, "fpst" },
+    {   9, "fpcc" },
+    {  10, "fpcfg" },
+    {  13, "eiic" },
+    {  14, "feic" },
+    {  15, "pswh" },
+    {  16, "ctpc" },
+    {  17, "ctpsw" },
+    {  18, "eipswh" },
+    {  19, "fepswh" },
+    {  20, "ctbp" },
+    {  21, "snzcfg" },
+    {  28, "eiwr" },
+    {  29, "fewr" },
+    {  32, "spid" },
+    {  33, "spidlist" },
+    {  34, "rbase" },
+    {  35, "ebase" },
+    {  36, "intbp" },
+    {  37, "mctl" },
+    {  38, "pid" },
+    {  40, "svlock" },
+    {  43, "sccfg" },
+    {  44, "scbp" },
+    {  48, "hvcfg" },
+    {  49, "gmcfg" },
+    {  52, "hvsb" },
+    {  64, "peid" },
+    {  65, "bmid" },
+    {  70, "mea" },
+    {  72, "mei" },
+    {  74, "ispr" },
+    {  75, "imsr" },
+    {  76, "icsr" },
+    {  77, "intcfg" },
+    {  78, "plmr" },
+    {  79, "rbcr0" },
+    {  80, "rbcr1" },
+    {  81, "rbnr" },
+    {  82, "rbip" },
+    {  96, "dbgen" },
+    { 144, "ictagl" },
+    { 145, "ictagh" },
+    { 146, "icdatl" },
+    { 147, "icdath" },
+    { 152, "icctrl" },
+    { 154, "iccfg" },
+    { 156, "icerr" },
+    { 160, "mpm" },
+    { 162, "mpcfg" },
+    { 168, "mca" },
+    { 169, "mcs" },
+    { 170, "mcc" },
+    { 171, "mcr" },
+    { 172, "mci" },
+    { 176, "mpidx" },
+    { 177, "mpbk" },
+    { 180, "mpla" },
+    { 181, "mpua" },
+    { 182, "mpat" },
+    { 184, "mpid0" },
+    { 185, "mpid1" },
+    { 186, "mpid2" },
+    { 187, "mpid3" },
+    { 188, "mpid4" },
+    { 189, "mpid5" },
+    { 190, "mpid6" },
+    { 191, "mpid7" },
+    { 288, "gmeipc" },
+    { 289, "gmeipsw" },
+    { 290, "gmfepc" },
+    { 291, "gmfepsw" },
+    { 293, "gmpsw" },
+    { 294, "gmmea" },
+    { 296, "gmmei" },
+    { 301, "gmeiic" },
+    { 302, "gmfeic" },
+    { 304, "gmspid" },
+    { 305, "gmspidlist" },
+    { 307, "gmebase" },
+    { 308, "gmintbp" },
+    { 309, "gmintcfg" },
+    { 310, "gmplmr" },
+    { 312, "gmsvlock" },
+    { 313, "gmmpm" },
+    { 316, "gmeiwr" },
+    { 317, "gmfewr" },
+    { 318, "gmpeid" },
+    { 352, "tscountl" },
+    { 353, "tscounth" },
+    { 354, "tsctrl" },
+    { 360, "pmumctrl" },
+    { 361, "pmgmctrl" },
+    { 384, "lstest0" },
+    { 385, "lstest1" },
+    { 386, "lscfg" },
+    { 389, "ifcr" },
+    { 392, "brpctrl0" },
+    { 428, "l1rcfg" },
+    { 440, "rdbcr" },
+    { 448, "pmctrl0" },
+    { 449, "pmctrl1" },
+    { 450, "pmctrl2" },
+    { 451, "pmctrl3" },
+    { 452, "pmctrl4" },
+    { 453, "pmctrl5" },
+    { 454, "pmctrl6" },
+    { 455, "pmctrl7" },
+    { 464, "pmcount0" },
+    { 465, "pmcount1" },
+    { 466, "pmcount2" },
+    { 467, "pmcount3" },
+    { 468, "pmcount4" },
+    { 469, "pmcount5" },
+    { 470, "pmcount6" },
+    { 471, "pmcount7" },
+    { 480, "pmsubcnd0" },
+    { 481, "pmsubcnd1" },
+    { 482, "pmsubcnd2" },
+    { 483, "pmsubcnd3" },
+    { 484, "pmsubcnd4" },
+    { 485, "pmsubcnd5" },
+    { 486, "pmsubcnd6" },
+    { 487, "pmsubcnd7" },
+  };
+  unsigned int i;
+
+  for (i = 0; i < ARRAY_SIZE (v850_g4mh2_sreg_names); i++)
+    if (v850_g4mh2_sreg_names[i].value == reg)
+      return v850_g4mh2_sreg_names[i].name;
+  return NULL;
+}
+
 static const char *
 get_v850_sreg_name (unsigned int reg)
 {
@@ -542,12 +693,19 @@ disassemble (bfd_vma memaddr,
 		  info->fprintf_func (info->stream, ", [");
 		  square = true;
 		}
-	      else if (   (strcmp (op->name, "pushsp") == 0
+	      else if ((   (strcmp (op->name, "pushsp") == 0
 			|| strcmp (op->name, "popsp") == 0
-			|| strcmp (op->name, "dbpush" ) == 0)
+			|| strcmp (op->name, "dbpush" ) == 0
+			|| strcmp (op->name, "stm.mp") == 0)
 		       && opnum == 2)
+		       || (strcmp (op->name, "ldm.mp") == 0 && opnum == 3))
 		{
 		  info->fprintf_func (info->stream, "-");
+		}
+	      else if (strcmp (op->name, "stm.mp") == 0 && opnum == 3)
+		{
+		  info->fprintf_func (info->stream, ", %s[", prefix);
+		  square = true;
 		}
 	      else if (opnum > 1
 		       && (v850_operands[*(opindex_ptr - 1)].flags
@@ -595,9 +753,12 @@ disassemble (bfd_vma memaddr,
 		  info->fprintf_func (info->stream, "ep");
 		  break;
 		case V850_OPERAND_SRG:
-		  if (v850_g4_sregs && info->mach == bfd_mach_v850e3v5)
+		  if ((v850_g4_sregs || v850_g4mh2_sregs)
+		      && info->mach == bfd_mach_v850e3v5)
 		    {
-		      const char *name = get_v850_g4_sreg_name (value);
+		      const char *name = (v850_g4mh2_sregs
+					  ? get_v850_g4mh2_sreg_name (value)
+					  : get_v850_g4_sreg_name (value));
 
 		      if (name != NULL)
 			info->fprintf_func (info->stream, "%s", name);
@@ -769,11 +930,14 @@ print_insn_v850 (bfd_vma memaddr, struct disassemble_info * info)
   const char *opt;
 
   v850_g4_sregs = false;
+  v850_g4mh2_sregs = false;
   if (info->disassembler_options != NULL)
     FOR_EACH_DISASSEMBLER_OPTION (opt, info->disassembler_options)
       {
 	if (disassembler_options_cmp (opt, "g4") == 0)
 	  v850_g4_sregs = true;
+	else if (disassembler_options_cmp (opt, "g4mh2") == 0)
+	  v850_g4mh2_sregs = true;
 	else
 	  /* xgettext:c-format */
 	  opcodes_error_handler (_("unrecognised disassembler option: %s"),
@@ -987,4 +1151,5 @@ print_v850_disassembler_options (FILE *stream)
 The following V850 specific disassembler options are supported for use\n\
 with the -M switch:\n"));
   fprintf (stream, _("  g4  Print RH850 G4 system register names.\n"));
+  fprintf (stream, _("  g4mh2  Print RH850 G4MH2 system register names.\n"));
 }

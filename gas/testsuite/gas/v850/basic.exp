@@ -458,4 +458,12 @@ if [istarget v850*-*-*] then {
     run_dump_test "g4-sreg-num"
     run_dump_test "g4-dir"
     run_dump_test "g4-dir-bad"
+    run_dump_test "g4mh2"
+    run_dump_test "g4mh2-bad"
+    run_dump_test "g4mh2-sreg"
+    run_dump_test "g4mh2-sreg-dis"
+    run_dump_test "g4mh2-sreg-bad"
+    run_dump_test "g4mh2-gmfewr"
+    run_dump_test "g4mh2-dir"
+    run_dump_test "g4mh2-dir-bad"
 }

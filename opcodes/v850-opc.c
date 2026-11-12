@@ -1601,6 +1601,9 @@ const struct v850_opcode v850_opcodes[] =
 { "ldl.hu",	two (0x0fe0, 0x0374),	two (0xffe0, 0x07ff),	{R1, R3},		1, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_G4 },
 { "ldl.w",	two (0x07e0, 0x0378),	two (0xffe0, 0x07ff),	{R1, R3}, 		1, PROCESSOR_V850E3V5_UP },
 
+{ "ldm.gsr",	two (0x07e0, 0x9960),	two (0xffe0, 0xffff),	{R1},			1, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_G4MH2 },
+{ "ldm.mp",	two (0x07e0, 0x0166),	two (0x07e0, 0x07ff),	{R1, R2, R3},		1, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_G4MH2 },
+
 { "ldsr",	two (0x07e0, 0x0020),	two (0x07e0, 0x07ff),	{R1, SR2, SELID}, 	0, PROCESSOR_V850E3V5_UP },
 { "ldsr",	two (0x07e0, 0x0020),	two (0x07e0, 0x07ff),	{R1, SR2}, 		0, PROCESSOR_V850E3V5_UP },
 { "ldsr",	two (0x07e0, 0x0020),	two (0x07e0, 0x07ff),	{R1, OLDSR2}, 		0, (PROCESSOR_ALL & (~ PROCESSOR_V850E3V5_UP)) },
@@ -1760,6 +1763,9 @@ const struct v850_opcode v850_opcodes[] =
 { "stc.b",	two (0x07e0, 0x0372),	two (0xffe0, 0x07ff),	{R3, R1},		2, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_G4 },
 { "stc.h",	two (0x07e0, 0x0376),	two (0xffe0, 0x07ff),	{R3, R1},		2, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_G4 },
 { "stc.w",	two (0x07e0, 0x037a),	two (0xffe0, 0x07ff),	{R3, R1},		2, PROCESSOR_V850E3V5_UP },
+
+{ "stm.gsr",	two (0x07e0, 0x9160),	two (0xffe0, 0xffff),	{R1},			1, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_G4MH2 },
+{ "stm.mp",	two (0x07e0, 0x0164),	two (0x07e0, 0x07ff),	{R2, R3, R1},		3, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_G4MH2 },
 
 { "stsr",	two (0x07e0, 0x0040),	two (0x07e0, 0x07ff),	{SR1, R2, SELID}, 	0, PROCESSOR_V850E3V5_UP },
 { "stsr",	two (0x07e0, 0x0040),	two (0x07e0, 0x07ff),	{SR1, R2}, 		0, PROCESSOR_V850E3V5_UP },
