@@ -545,6 +545,13 @@ set_g4mh2 (int ignore ATTRIBUTE_UNUSED)
 }
 
 static void
+set_fxu (int ignore ATTRIBUTE_UNUSED)
+{
+  processor_mask |= (PROCESSOR_OPTION_G4 | PROCESSOR_OPTION_G4MH2
+		     | PROCESSOR_OPTION_FXU);
+}
+
+static void
 v850_longcode (int type)
 {
   expressionS ex;
@@ -604,6 +611,7 @@ const pseudo_typeS md_pseudo_table[] =
   { "v850e3v5",		set_machine,		bfd_mach_v850e3v5 	},
   { "g4",		set_g4,		0			},
   { "g4mh2",		set_g4mh2,	0			},
+  { "fxu",		set_fxu,	0			},
   { "longcall",		v850_longcode,		1			},
   { "longjump",		v850_longcode,		2			},
   { NULL,		NULL,			0			}
@@ -920,6 +928,12 @@ static const struct reg_name g4mh2_system_registers[] =
   { "fpepc",         7, PROCESSOR_V850E3V5_UP },
   { "fpsr",          6, PROCESSOR_V850E3V5_UP },
   { "fpst",          8, PROCESSOR_V850E3V5_UP },
+  { "fxcfg",       330, PROCESSOR_V850E3V5_UP },
+  { "fxinfo",      329, PROCESSOR_V850E3V5_UP },
+  { "fxsr",        326, PROCESSOR_V850E3V5_UP },
+  { "fxst",        328, PROCESSOR_V850E3V5_UP },
+  { "fxxc",        332, PROCESSOR_V850E3V5_UP },
+  { "fxxp",        333, PROCESSOR_V850E3V5_UP },
   { "gmcfg",        49, PROCESSOR_V850E3V5_UP },
   { "gmebase",     307, PROCESSOR_V850E3V5_UP },
   { "gmeiic",      301, PROCESSOR_V850E3V5_UP },
@@ -1104,6 +1118,29 @@ static const struct reg_name float_cc_names[] =
 #define FLOAT_CC_NAME_CNT					\
   (sizeof (float_cc_names) / sizeof (struct reg_name))
 
+static const struct reg_name fxu_cc_names[] =
+{
+  { "eq",   0x2, PROCESSOR_V850E3V5_UP },
+  { "f",    0x0, PROCESSOR_V850E3V5_UP },
+  { "le",   0xe, PROCESSOR_V850E3V5_UP },
+  { "lt",   0xc, PROCESSOR_V850E3V5_UP },
+  { "nge",  0xd, PROCESSOR_V850E3V5_UP },
+  { "ngl",  0xb, PROCESSOR_V850E3V5_UP },
+  { "ngle", 0x9, PROCESSOR_V850E3V5_UP },
+  { "ngt",  0xf, PROCESSOR_V850E3V5_UP },
+  { "ole",  0x6, PROCESSOR_V850E3V5_UP },
+  { "olt",  0x4, PROCESSOR_V850E3V5_UP },
+  { "seq",  0xa, PROCESSOR_V850E3V5_UP },
+  { "sf",   0x8, PROCESSOR_V850E3V5_UP },
+  { "ueq",  0x3, PROCESSOR_V850E3V5_UP },
+  { "ule",  0x7, PROCESSOR_V850E3V5_UP },
+  { "ult",  0x5, PROCESSOR_V850E3V5_UP },
+  { "un",   0x1, PROCESSOR_V850E3V5_UP },
+};
+
+#define FXU_CC_NAME_CNT						\
+  (sizeof (fxu_cc_names) / sizeof (struct reg_name))
+
 
 static const struct reg_name cacheop_names[] =
 {
@@ -1173,6 +1210,45 @@ static const struct reg_name vector_registers[] =
 
 #define VREG_NAME_CNT						\
   (sizeof (vector_registers) / sizeof (struct reg_name))
+
+static const struct reg_name fxu_registers[] =
+{
+  { "wr0",   0, PROCESSOR_V850E3V5_UP },
+  { "wr1",   1, PROCESSOR_V850E3V5_UP },
+  { "wr10",  10, PROCESSOR_V850E3V5_UP },
+  { "wr11",  11, PROCESSOR_V850E3V5_UP },
+  { "wr12",  12, PROCESSOR_V850E3V5_UP },
+  { "wr13",  13, PROCESSOR_V850E3V5_UP },
+  { "wr14",  14, PROCESSOR_V850E3V5_UP },
+  { "wr15",  15, PROCESSOR_V850E3V5_UP },
+  { "wr16",  16, PROCESSOR_V850E3V5_UP },
+  { "wr17",  17, PROCESSOR_V850E3V5_UP },
+  { "wr18",  18, PROCESSOR_V850E3V5_UP },
+  { "wr19",  19, PROCESSOR_V850E3V5_UP },
+  { "wr2",   2, PROCESSOR_V850E3V5_UP },
+  { "wr20",  20, PROCESSOR_V850E3V5_UP },
+  { "wr21",  21, PROCESSOR_V850E3V5_UP },
+  { "wr22",  22, PROCESSOR_V850E3V5_UP },
+  { "wr23",  23, PROCESSOR_V850E3V5_UP },
+  { "wr24",  24, PROCESSOR_V850E3V5_UP },
+  { "wr25",  25, PROCESSOR_V850E3V5_UP },
+  { "wr26",  26, PROCESSOR_V850E3V5_UP },
+  { "wr27",  27, PROCESSOR_V850E3V5_UP },
+  { "wr28",  28, PROCESSOR_V850E3V5_UP },
+  { "wr29",  29, PROCESSOR_V850E3V5_UP },
+  { "wr3",   3, PROCESSOR_V850E3V5_UP },
+  { "wr30",  30, PROCESSOR_V850E3V5_UP },
+  { "wr31",  31, PROCESSOR_V850E3V5_UP },
+  { "wr4",   4, PROCESSOR_V850E3V5_UP },
+  { "wr5",   5, PROCESSOR_V850E3V5_UP },
+  { "wr6",   6, PROCESSOR_V850E3V5_UP },
+  { "wr7",   7, PROCESSOR_V850E3V5_UP },
+  { "wr8",   8, PROCESSOR_V850E3V5_UP },
+  { "wr9",   9, PROCESSOR_V850E3V5_UP },
+};
+
+#define WREG_NAME_CNT						\
+  (sizeof (fxu_registers) / sizeof (struct reg_name))
 
 /* Do a binary search of the given register table to see if NAME is a
    valid register name.  Return the register number from the array on
@@ -1454,6 +1530,52 @@ float_cc_name (expressionS *expressionP,
 }
 
 static bool
+fxu_cc_name (expressionS *expressionP,
+	     bool accept_numbers)
+{
+  int reg_number;
+  char *name;
+  char *start;
+  char c;
+
+  start = input_line_pointer;
+  c = get_symbol_name (&name);
+  reg_number = reg_name_search (fxu_cc_names, FXU_CC_NAME_CNT, name,
+				accept_numbers);
+
+  (void) restore_line_pointer (c);
+
+  if (reg_number < 0
+      && accept_numbers)
+    {
+      input_line_pointer = start;
+
+      if (ISDIGIT (*input_line_pointer))
+	{
+	  reg_number = strtol (input_line_pointer, &input_line_pointer, 0);
+	}
+    }
+
+  expressionP->X_add_symbol = NULL;
+  expressionP->X_op_symbol  = NULL;
+
+  if (reg_number >= 0)
+    {
+      expressionP->X_op		= O_constant;
+      expressionP->X_add_number = reg_number;
+
+      return true;
+    }
+
+  input_line_pointer = start;
+
+  expressionP->X_op = O_illegal;
+  expressionP->X_add_number = 0;
+
+  return false;
+}
+
+static bool
 cacheop_name (expressionS * expressionP,
 	      bool accept_numbers)
 {
@@ -1580,6 +1702,40 @@ vector_register_name (expressionS *expressionP)
     }
 
   /* Reset the line as if we had not done anything.  */
+  input_line_pointer = start;
+
+  expressionP->X_op = O_illegal;
+
+  return false;
+}
+
+static bool
+fxu_register_name (expressionS *expressionP)
+{
+  int reg_number;
+  char *name;
+  char *start;
+  char c;
+
+  start = input_line_pointer;
+  c = get_symbol_name (&name);
+
+  reg_number = reg_name_search (fxu_registers, WREG_NAME_CNT,
+				name, false);
+
+  (void) restore_line_pointer (c);
+
+  expressionP->X_add_symbol = NULL;
+  expressionP->X_op_symbol  = NULL;
+
+  if (reg_number >= 0)
+    {
+      expressionP->X_op		= O_register;
+      expressionP->X_add_number = reg_number;
+
+      return true;
+    }
+
   input_line_pointer = start;
 
   expressionP->X_op = O_illegal;
@@ -1801,6 +1957,7 @@ md_show_usage (FILE *stream)
   fprintf (stream, _("  -mextension               enable extension opcode support\n"));
   fprintf (stream, _("  -mg4                      enable RH850 G4 opcode support\n"));
   fprintf (stream, _("  -mg4mh2                   enable RH850 G4MH2 opcode support\n"));
+  fprintf (stream, _("  -mfxu                     enable RH850 FXU opcode support\n"));
   fprintf (stream, _("  -mno-bcond17		  disable b<cond> disp17 instruction\n"));
   fprintf (stream, _("  -mno-stld23		  disable st/ld offset23 instruction\n"));
   fprintf (stream, _("  -mgcc-abi                 Mark the binary as using the old GCC ABI\n"));
@@ -1881,6 +2038,11 @@ md_parse_option (int c, const char *arg)
   else if (strcmp (arg, "g4mh2") == 0)
     {
       processor_mask |= PROCESSOR_OPTION_G4 | PROCESSOR_OPTION_G4MH2;
+    }
+  else if (strcmp (arg, "fxu") == 0)
+    {
+      processor_mask |= (PROCESSOR_OPTION_G4 | PROCESSOR_OPTION_G4MH2
+			 | PROCESSOR_OPTION_FXU);
     }
   else if (strcmp (arg, "no-bcond17") == 0)
     {
@@ -2682,6 +2844,7 @@ md_assemble (char *str)
       insn = opcode->opcode;
       extra_data_len = 0;
       extra_data_after_insn = false;
+      extra_data = 0;
 
       input_line_pointer = str = start_of_operands;
 
@@ -3137,6 +3300,11 @@ md_assemble (char *str)
 		      errmsg = _("invalid condition code name");
 		    }
 		}
+	      else if ((operand->flags & V850_OPERAND_FXCC) != 0)
+		{
+		  if (!fxu_cc_name (&ex, true))
+		    errmsg = _("invalid condition code name");
+		}
 	      else if ((operand->flags & V850_OPERAND_CACHEOP) != 0)
 		{
 		  if (!cacheop_name (&ex, true))
@@ -3151,6 +3319,11 @@ md_assemble (char *str)
 		{
 		  if (!vector_register_name (&ex))
 		    errmsg = _("invalid vector register name");
+		}
+	      else if ((operand->flags & V850_OPERAND_WREG) != 0)
+		{
+		  if (!fxu_register_name (&ex))
+		    errmsg = _("invalid FXU register name");
 		}
 	      else if ((register_name (&ex)
 			&& (operand->flags & V850_OPERAND_REG) == 0))
@@ -3221,6 +3394,11 @@ md_assemble (char *str)
 		{
 		  errmsg = _("syntax error: vector register not expected");
 		}
+	      else if (fxu_register_name (&ex)
+		       && (operand->flags & V850_OPERAND_WREG) == 0)
+		{
+		  errmsg = _("syntax error: FXU register not expected");
+		}
 	      else
 		{
 		  expression (&ex);
@@ -3283,24 +3461,46 @@ md_assemble (char *str)
 		  goto error;
 		case O_register:
 		  if ((operand->flags
-		       & (V850_OPERAND_REG | V850_OPERAND_SRG | V850_OPERAND_VREG)) == 0)
+		       & (V850_OPERAND_REG | V850_OPERAND_SRG
+			  | V850_OPERAND_VREG | V850_OPERAND_WREG)) == 0)
 		    {
 		      errmsg = _("invalid operand");
 		      goto error;
 		    }
-
-		  insn = v850_insert_operand (insn, operand,
-					      ex.X_add_number,
-					      &warningmsg);
-
-		  break;
+		  /* Fall through.  */
 
 		case O_constant:
-		  insn = v850_insert_operand (insn, operand, ex.X_add_number,
-					      &warningmsg);
+		  if (operand->flags & V850_OPERAND_EXT16)
+		    {
+		      if (operand->insert)
+			extra_data = operand->insert (extra_data,
+						      ex.X_add_number,
+						      &errmsg);
+		      else
+			extra_data = v850_insert_operand (extra_data, operand,
+							  ex.X_add_number,
+							  &errmsg);
+		      if (operand->flags & V850_OPERAND_IMM12)
+			insn |= ((ex.X_add_number >> 11) & 1) << 21;
+		      extra_data_after_insn = true;
+		      extra_data_len = 2;
+		    }
+		  else if (opcode->processors & PROCESSOR_OPTION_FXU)
+		    insn = v850_insert_operand (insn, operand, ex.X_add_number,
+						&errmsg);
+		  else
+		    insn = v850_insert_operand (insn, operand, ex.X_add_number,
+						&warningmsg);
+		  if (errmsg)
+		    goto error;
 		  break;
 
 		default:
+		  if (operand->flags & V850_OPERAND_EXT16)
+		    {
+		      errmsg = _("constant expected");
+		      goto error;
+		    }
 		  /* We need to generate a fixup for this expression.  */
 		  if (fc >= MAX_INSN_FIXUPS)
 		    as_fatal (_("too many fixups"));

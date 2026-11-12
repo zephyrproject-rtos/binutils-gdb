@@ -107,7 +107,20 @@ instructions @code{ldm.mp}, @code{stm.mp}, @code{ldm.gsr} and
 @code{stm.gsr}, and the G4MH2 system register names, including the
 virtualization and guest context registers.  The G4MH2 names replace
 the G4 names where the two differ, for example the performance counter
-registers.
+registers.  The names include the FXU system registers @code{fxsr},
+@code{fxst}, @code{fxinfo}, @code{fxcfg}, @code{fxxc} and @code{fxxp}.
+
+@cindex @code{-mfxu} command-line option, V850
+@item -mfxu
+Enables everything that @option{-mg4mh2} enables and the instructions of
+the RH850 FXU, the extended floating-point unit of the G4MH2 core, with
+the vector registers @code{wr0} to @code{wr31}.  The comparison condition
+of @code{cmpf.s4} is a number from 0 to 15 or one of @code{f}, @code{un},
+@code{eq}, @code{ueq}, @code{olt}, @code{ult}, @code{ole}, @code{ule},
+@code{sf}, @code{ngle}, @code{seq}, @code{ngl}, @code{lt}, @code{nge},
+@code{le} and @code{ngt}.  The displacement of @code{ldv} and @code{stv}
+must be a constant that is a multiple of the access size: 4 for
+@code{.w}, 8 for @code{.dw} and @code{.h4}, 16 for @code{.qw}.
 
 @cindex @code{-mrelax} command-line option, V850
 @item -mrelax
@@ -367,6 +380,11 @@ point on, as @option{-mg4} does.
 @item .g4mh2
 Enables the RH850 G4MH2 instructions and system register names from
 this point on, as @option{-mg4mh2} does.
+
+@cindex @code{.fxu} directive, V850
+@item .fxu
+Enables the RH850 FXU instructions from this point on, as @option{-mfxu}
+does.
 
 @end table
 

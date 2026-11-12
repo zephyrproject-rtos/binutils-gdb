@@ -840,6 +840,80 @@ extract_PREFOP (unsigned long insn, int * invalid)
 }
 
 static unsigned long
+insert_fx_d16 (unsigned long insn, unsigned long value, const char ** errmsg,
+	       unsigned long align)
+{
+  if (value + 0x8000 > 0xffff)
+    * errmsg = (value & (align - 1)) ? _(not_valid) : _(out_of_range);
+  else if (value & (align - 1))
+    * errmsg = _(not_aligned);
+
+  return insn | (value & 0xffff & ~(align - 1));
+}
+
+static unsigned long
+extract_fx_d16 (unsigned long insn, int * invalid, unsigned long align)
+{
+  unsigned long ret = insn & 0xffff;
+
+  if ((ret & (align - 1)) != 0 && invalid != NULL)
+    * invalid = 1;
+
+  return (ret ^ 0x8000) - 0x8000;
+}
+
+static unsigned long
+insert_fx_d16_w (unsigned long insn, unsigned long value, const char ** errmsg)
+{
+  return insert_fx_d16 (insn, value, errmsg, 4);
+}
+
+static unsigned long
+extract_fx_d16_w (unsigned long insn, int * invalid)
+{
+  return extract_fx_d16 (insn, invalid, 4);
+}
+
+static unsigned long
+insert_fx_d16_dw (unsigned long insn, unsigned long value, const char ** errmsg)
+{
+  return insert_fx_d16 (insn, value, errmsg, 8);
+}
+
+static unsigned long
+extract_fx_d16_dw (unsigned long insn, int * invalid)
+{
+  return extract_fx_d16 (insn, invalid, 8);
+}
+
+static unsigned long
+insert_fx_d16_qw (unsigned long insn, unsigned long value, const char ** errmsg)
+{
+  return insert_fx_d16 (insn, value, errmsg, 16);
+}
+
+static unsigned long
+extract_fx_d16_qw (unsigned long insn, int * invalid)
+{
+  return extract_fx_d16 (insn, invalid, 16);
+}
+
+static unsigned long
+insert_fx_imm12 (unsigned long insn, unsigned long value, const char ** errmsg)
+{
+  if (value > 0xfff)
+    * errmsg = _(immediate_out_of_range);
+
+  return insn | (value & 0x7ff);
+}
+
+static unsigned long
+extract_fx_imm12 (unsigned long insn, int * invalid ATTRIBUTE_UNUSED)
+{
+  return insn & 0x7ff;
+}
+
+static unsigned long
 insert_IMM10U (unsigned long insn, unsigned long value, const char ** errmsg)
 {
   unsigned long imm10, ret;
@@ -1277,6 +1351,51 @@ const struct v850_operand v850_operands[] =
 
 #define IMM10U	(PREFOP + 1)
   { 0, 0, insert_IMM10U, extract_IMM10U, 0, BFD_RELOC_NONE },
+
+#define WR1	(IMM10U + 1)
+  { 5, 0, NULL, NULL, V850_OPERAND_WREG, BFD_RELOC_NONE },
+
+#define WR2	(WR1 + 1)
+  { 5, 11, NULL, NULL, V850_OPERAND_WREG, BFD_RELOC_NONE },
+
+#define WR3	(WR2 + 1)
+  { 5, 27, NULL, NULL, V850_OPERAND_WREG, BFD_RELOC_NONE },
+
+#define WR2X	(WR3 + 1)
+  { 5, 11, NULL, NULL, V850_OPERAND_WREG | V850_OPERAND_EXT16, BFD_RELOC_NONE },
+
+#define WR4X	(WR2X + 1)
+  { 5, 0, NULL, NULL, V850_OPERAND_WREG | V850_OPERAND_EXT16, BFD_RELOC_NONE },
+
+#define FXCC	(WR4X + 1)
+  { 4, 17, NULL, NULL, V850_OPERAND_FXCC, BFD_RELOC_NONE },
+
+#define FXIMM1	(FXCC + 1)
+  { 1, 21, NULL, NULL, 0, BFD_RELOC_NONE },
+
+#define FXIMM2	(FXIMM1 + 1)
+  { 2, 21, NULL, NULL, 0, BFD_RELOC_NONE },
+
+#define FXIMM2L	(FXIMM2 + 1)
+  { 2, 0, NULL, NULL, 0, BFD_RELOC_NONE },
+
+#define FXIMM3	(FXIMM2L + 1)
+  { 3, 27, NULL, NULL, 0, BFD_RELOC_NONE },
+
+#define FXIMM4	(FXIMM3 + 1)
+  { 4, 21, NULL, NULL, 0, BFD_RELOC_NONE },
+
+#define FXIMM12	(FXIMM4 + 1)
+  { 12, 0, insert_fx_imm12, extract_fx_imm12, V850_OPERAND_EXT16 | V850_OPERAND_IMM12, BFD_RELOC_NONE },
+
+#define FXD16_W	(FXIMM12 + 1)
+  { 16, 0, insert_fx_d16_w, extract_fx_d16_w, V850_OPERAND_SIGNED | V850_OPERAND_DISP | V850_OPERAND_EXT16, BFD_RELOC_NONE },
+
+#define FXD16_DW	(FXD16_W + 1)
+  { 16, 0, insert_fx_d16_dw, extract_fx_d16_dw, V850_OPERAND_SIGNED | V850_OPERAND_DISP | V850_OPERAND_EXT16, BFD_RELOC_NONE },
+
+#define FXD16_QW	(FXD16_DW + 1)
+  { 16, 0, insert_fx_d16_qw, extract_fx_d16_qw, V850_OPERAND_SIGNED | V850_OPERAND_DISP | V850_OPERAND_EXT16, BFD_RELOC_NONE },
 };
 
 
@@ -1331,6 +1450,66 @@ const struct v850_operand v850_operands[] =
 
 const struct v850_opcode v850_opcodes[] =
 {
+{ "absf.s4",	two (0x07f0, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "addf.s4",	two (0x07e0, 0x05a4),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "addrf.s4",	two (0x07e0, 0x05b4),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "addsubf.s4",	two (0x07e0, 0x05d0),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "addsubnf.s4",	two (0x07e0, 0x05d8),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "addsubnxf.s4",	two (0x07e0, 0x05dc),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "addsubxf.s4",	two (0x07e0, 0x05d4),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "addxf.s4",	two (0x07e0, 0x05c4),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "ceilf.suw4",	two (0x07e5, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "ceilf.sw4",	two (0x07e4, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "cmovf.w4",	two (0x07a0, 0x061d),	two (0xffe0, 0x07ff),	{WR4X, WR1, WR2X, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "cmpf.s4",	two (0x07e0, 0x0580),	two (0x07e0, 0x07e1),	{FXCC, WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "cvtf.hs4",	two (0x07ec, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "cvtf.sh4",	two (0x07ed, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "cvtf.suw4",	two (0x07e9, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "cvtf.sw4",	two (0x07e8, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "cvtf.uws4",	two (0x07eb, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "cvtf.ws4",	two (0x07ea, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "divf.s4",	two (0x07e0, 0x05ae),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "floorf.suw4",	two (0x07e7, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "floorf.sw4",	two (0x07e6, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "flpv.s4",	two (0x07f8, 0x05a0),	two (0x07fc, 0x07ff),	{FXIMM2L, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "fmaf.s4",	two (0x07e0, 0x04c0),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "fmsf.s4",	two (0x07e0, 0x04c2),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "fnmaf.s4",	two (0x07e0, 0x04c4),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "fnmsf.s4",	two (0x07e0, 0x04c6),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "ldv.dw",	two (0x07a0, 0x031d),	two (0xffe0, 0x079f),	{FXIMM2, FXD16_DW, R1, WR3},	3, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "ldv.qw",	two (0x07a0, 0x029d),	two (0xffe0, 0x07ff),	{FXD16_QW, R1, WR3},	2, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "ldv.w",	two (0x07a0, 0x001d),	two (0xffe0, 0x061f),	{FXIMM4, FXD16_W, R1, WR3},	3, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "ldvz.h4",	two (0x07a0, 0x03dd),	two (0xffe0, 0x07ff),	{FXD16_DW, R1, WR3},	2, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "maxf.s4",	two (0x07e0, 0x05aa),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "maxrf.s4",	two (0x07e0, 0x05ba),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "minf.s4",	two (0x07e0, 0x05ac),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "minrf.s4",	two (0x07e0, 0x05bc),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "movv.w4",	two (0x07fe, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "mulf.s4",	two (0x07e0, 0x05a8),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "mulrf.s4",	two (0x07e0, 0x05b8),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "mulxf.s4",	two (0x07e0, 0x05c8),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "negf.s4",	two (0x07f1, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "recipf.s4",	two (0x07f3, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "roundf.suw4",	two (0x07e1, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "roundf.sw4",	two (0x07e0, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "rsqrtf.s4",	two (0x07f4, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "shflv.w4",	two (0x07a0, 0x069d),	two (0xffe0, 0x07df),	{FXIMM12, WR1, WR2X, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "sqrtf.s4",	two (0x07f2, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "stv.dw",	two (0x07a0, 0x039d),	two (0xffe0, 0x07df),	{FXIMM1, WR3, FXD16_DW, R1},	4, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "stv.qw",	two (0x07a0, 0x02bd),	two (0xffe0, 0x07ff),	{WR3, FXD16_QW, R1},	3, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "stv.w",	two (0x07a0, 0x021d),	two (0xffe0, 0x079f),	{FXIMM2, WR3, FXD16_W, R1},	4, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "stvz.h4",	two (0x07a0, 0x03fd),	two (0xffe0, 0x07ff),	{WR3, FXD16_DW, R1},	3, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "subaddf.s4",	two (0x07e0, 0x05d2),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "subaddnf.s4",	two (0x07e0, 0x05da),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "subaddnxf.s4",	two (0x07e0, 0x05de),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "subaddxf.s4",	two (0x07e0, 0x05d6),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "subf.s4",	two (0x07e0, 0x05a6),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "subrf.s4",	two (0x07e0, 0x05b6),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "subxf.s4",	two (0x07e0, 0x05c6),	two (0x07e0, 0x07ff),	{WR1, WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "trfsrv.w4",	two (0x07ff, 0x05a0),	two (0x07ff, 0xc7ff),	{FXIMM3, WR2},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "trncf.suw4",	two (0x07e3, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+{ "trncf.sw4",	two (0x07e2, 0x05a0),	two (0x07ff, 0x07ff),	{WR2, WR3},	0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_FXU },
+
 /* Standard instructions.  */
 { "add",	OP  (0x0e),		OP_MASK,		IF1, 			0, PROCESSOR_ALL },
 { "add",	OP  (0x12),		OP_MASK,		IF2, 			0, PROCESSOR_ALL },

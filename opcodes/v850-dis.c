@@ -91,6 +91,30 @@ get_operand_value (const struct v850_operand *operand,
   unsigned long value;
   bfd_byte buffer[4];
 
+  if (operand->flags & V850_OPERAND_EXT16)
+    {
+      int status = info->read_memory_func (memaddr + 4, buffer, 2, info);
+
+      if (status == 0)
+	{
+	  unsigned long ext = bfd_getl16 (buffer);
+
+	  if (operand->extract)
+	    value = (operand->extract) (ext, invalid);
+	  else
+	    value = (ext >> operand->shift) & ((1 << operand->bits) - 1);
+	  if (operand->flags & V850_OPERAND_IMM12)
+	    value |= ((insn >> 21) & 1) << 11;
+
+	  return value;
+	}
+
+      if (!noerror)
+	info->memory_error_func (status, memaddr + 4, info);
+
+      return 0;
+    }
+
   if ((operand->flags & V850E_IMMEDIATE16)
       || (operand->flags & V850E_IMMEDIATE16HI))
     {
@@ -378,6 +402,12 @@ get_v850_g4mh2_sreg_name (unsigned int reg)
     { 316, "gmeiwr" },
     { 317, "gmfewr" },
     { 318, "gmpeid" },
+    { 326, "fxsr" },
+    { 328, "fxst" },
+    { 329, "fxinfo" },
+    { 330, "fxcfg" },
+    { 332, "fxxc" },
+    { 333, "fxxp" },
     { 352, "tscountl" },
     { 353, "tscounth" },
     { 354, "tsctrl" },
@@ -476,6 +506,22 @@ get_v850_vreg_name (unsigned int reg)
 }
 
 static const char *
+get_v850_wreg_name (unsigned int reg)
+{
+  static const char *const v850_wreg_names[] =
+    {
+     "wr0", "wr1", "wr2", "wr3", "wr4", "wr5", "wr6", "wr7", "wr8", "wr9",
+     "wr10", "wr11", "wr12", "wr13", "wr14", "wr15", "wr16", "wr17", "wr18",
+     "wr19", "wr20", "wr21", "wr22", "wr23", "wr24", "wr25", "wr26", "wr27",
+     "wr28", "wr29", "wr30", "wr31"
+    };
+
+  if (reg < ARRAY_SIZE (v850_wreg_names))
+    return v850_wreg_names[reg];
+  return _("<invalid w-reg number>");
+}
+
+static const char *
 get_v850_cc_name (unsigned int reg)
 {
   static const char *const v850_cc_names[] =
@@ -501,6 +547,20 @@ get_v850_float_cc_name (unsigned int reg)
   if (reg < ARRAY_SIZE (v850_float_cc_names))
     return v850_float_cc_names[reg];
   return _("<invalid float-CC-reg number>");
+}
+
+static const char *
+get_v850_fxu_cc_name (unsigned int reg)
+{
+  static const char *const v850_fxu_cc_names[] =
+    {
+     "f", "un", "eq", "ueq", "olt", "ult", "ole", "ule",
+     "sf", "ngle", "seq", "ngl", "lt", "nge", "le", "ngt"
+    };
+
+  if (reg < ARRAY_SIZE (v850_fxu_cc_names))
+    return v850_fxu_cc_names[reg];
+  return _("<invalid FXU-CC number>");
 }
 
 static const char *
@@ -737,6 +797,8 @@ disassemble (bfd_vma memaddr,
 				       | V850E_OPERAND_REG_LIST
 				       | V850_OPERAND_CC
 				       | V850_OPERAND_VREG
+				       | V850_OPERAND_WREG
+				       | V850_OPERAND_FXCC
 				       | V850_OPERAND_CACHEOP
 				       | V850_OPERAND_PREFOP
 				       | V850_OPERAND_FLOAT_CC);
@@ -860,6 +922,11 @@ disassemble (bfd_vma memaddr,
 		  info->fprintf_func (info->stream, "%s", get_v850_float_cc_name (value));
 		  break;
 
+		case V850_OPERAND_FXCC:
+		  info->fprintf_func (info->stream, "%s",
+				      get_v850_fxu_cc_name (value));
+		  break;
+
 		case V850_OPERAND_CACHEOP:
 		  {
 		    int idx;
@@ -898,6 +965,11 @@ disassemble (bfd_vma memaddr,
 
 		case V850_OPERAND_VREG:
 		  info->fprintf_func (info->stream, "%s", get_v850_vreg_name (value));
+		  break;
+
+		case V850_OPERAND_WREG:
+		  info->fprintf_func (info->stream, "%s",
+				      get_v850_wreg_name (value));
 		  break;
 
 		default:
@@ -1012,6 +1084,15 @@ print_insn_v850 (bfd_vma memaddr, struct disassemble_info * info)
 	  length = 2;
 	  code_length = 6;
 	}
+    }
+
+  if (length == 0
+      && ((target_processor & PROCESSOR_V850E3V5_UP) != 0)
+      && (insn & 0xffe0) == 0x07a0
+      && !status2 && (insn2 & 0x001f) == 0x001d)
+    {
+      length = 4;
+      code_length = 6;
     }
 
   if (length == 0
