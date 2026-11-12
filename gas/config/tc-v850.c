@@ -2058,6 +2058,35 @@ handle_lo16 (const struct v850_operand *operand, const char **errmsg)
     }
 }
 
+/* Return the name of the reloc prefix of RELOC if the rh850 ABI has no
+   relocation that computes it, else NULL.  */
+
+static const char *
+v850_rh850_unsupported (bfd_reloc_code_real_type reloc)
+{
+  if (v850_target_arch != bfd_arch_v850_rh850)
+    return NULL;
+
+  switch (reloc)
+    {
+    case BFD_RELOC_V850_SDA_16_16_OFFSET:
+    case BFD_RELOC_V850_SDA_16_16_SPLIT_OFFSET:
+      return "sdaoff()";
+    case BFD_RELOC_V850_ZDA_15_16_OFFSET:
+    case BFD_RELOC_V850_ZDA_16_16_SPLIT_OFFSET:
+      return "zdaoff()";
+    case BFD_RELOC_V850_TDA_16_16_OFFSET:
+    case BFD_RELOC_V850_TDA_4_4_OFFSET:
+    case BFD_RELOC_V850_TDA_4_5_OFFSET:
+    case BFD_RELOC_V850_TDA_6_8_OFFSET:
+    case BFD_RELOC_V850_TDA_7_7_OFFSET:
+    case BFD_RELOC_V850_TDA_7_8_OFFSET:
+      return "tdaoff()";
+    default:
+      return NULL;
+    }
+}
+
 static bfd_reloc_code_real_type
 handle_ctoff (const struct v850_operand *operand, const char **errmsg)
 {
@@ -3278,12 +3307,20 @@ md_assemble (char *str)
 
       if (reloc != BFD_RELOC_NONE)
 	{
-	  reloc_howto_type *reloc_howto =
-	    bfd_reloc_type_lookup (stdoutput, reloc);
+	  reloc_howto_type *reloc_howto;
+	  const char *prefix = v850_rh850_unsupported (reloc);
 	  int size;
 	  int address;
 	  fixS *fixP;
 
+	  if (prefix != NULL)
+	    {
+	      as_bad (_("%s: %s is not supported by the rh850 ABI. "
+			"Use -mgcc-abi instead"), copy_of_instruction, prefix);
+	      continue;
+	    }
+
+	  reloc_howto = bfd_reloc_type_lookup (stdoutput, reloc);
 	  if (!reloc_howto)
 	    {
 	      as_bad (_("%s: relocation %s is not supported by the %s ABI"),
@@ -3732,6 +3769,15 @@ cons_fix_new_v850 (fragS *frag,
 		   expressionS *exp,
 		   bfd_reloc_code_real_type r)
 {
+  const char *prefix = v850_rh850_unsupported (r);
+
+  if (prefix != NULL)
+    {
+      as_bad (_("%s is not supported by the rh850 ABI. Use -mgcc-abi instead"),
+	      prefix);
+      return;
+    }
+
   if (r == BFD_RELOC_NONE)
     {
       if (size == 4)
