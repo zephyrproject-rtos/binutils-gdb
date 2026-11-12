@@ -444,4 +444,7 @@ if [istarget v850*-*-*] then {
     run_dump_test "loop-relax-bad"
     run_dump_test "reloc-no-type"
     run_dump_test "data-prefix-err"
+    run_dump_test "rh850-da"
+    run_dump_test "rh850-da-bad"
+    run_dump_test "rh850-da-gcc-abi"
 }
