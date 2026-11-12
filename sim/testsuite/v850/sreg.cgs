@@ -1,0 +1,49 @@
+# v850 ldsr, stsr with selID and the G4 FPU registers
+# mach: v850e3v5
+
+	.include "testutils.inc"
+
+# selID 1: RBASE, EBASE, INTBP
+	seti	0x00010000, r1
+	ldsr	r1, 2, 1
+	seti	0x00020200, r1
+	ldsr	r1, 3, 1
+	seti	0x00030000, r1
+	ldsr	r1, 4, 1
+	stsr	2, r2, 1
+	reg	r2, 0x00010000
+	stsr	3, r2, 1
+	reg	r2, 0x00020200
+	stsr	4, r2, 1
+	reg	r2, 0x00030000
+
+# selID 0 is a different register
+	stsr	3, r2, 0
+	reg	r2, 0
+
+# selID 7
+	seti	0x12345678, r1
+	ldsr	r1, 31, 7
+	stsr	31, r2, 7
+	reg	r2, 0x12345678
+
+# FPSR is regID 6, selID 0; FPST and FPCFG are views of it
+	seti	0x0002a020, r1
+	ldsr	r1, 6, 0
+	stsr	6, r2, 0
+	reg	r2, 0x0002a020
+	stsr	8, r2, 0
+	andi	0x3f00, r2, r2
+	reg	r2, 0x2800
+	stsr	10, r2, 0
+	reg	r2, 0x01
+
+# rounding mode through FPCFG lands in FPSR.RM
+	seti	0x00000180, r1
+	ldsr	r1, 10, 0
+	stsr	6, r2, 0
+	shr	18, r2
+	andi	3, r2, r2
+	reg	r2, 3
+
+	pass

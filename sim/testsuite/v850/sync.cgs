@@ -1,0 +1,22 @@
+# v850 synce, synci, syncm, syncp, snooze, cache, pref
+# mach: v850e3v5
+
+	.include "testutils.inc"
+
+	mov	1, r1
+	mov	sp, r5
+	noflags
+	synce
+	synci
+	syncm
+	syncp
+	snooze
+	cache	0x00, [r1]
+	cache	0x20, [r1]
+	pref	0, [r1]
+	flags	0
+	reg	r1, 1
+	cmp	r5, sp
+	bne	_fail
+
+	pass

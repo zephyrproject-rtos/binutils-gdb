@@ -1597,6 +1597,7 @@ OP_10007E0 (void)
 {
   trace_input ("trap", OP_TRAP, 0);
   trace_output (OP_TRAP);
+  v850_link_clear ();
 
   /* Trap 31 is used for simulating OS I/O functions */
 
@@ -3041,6 +3042,7 @@ SignalExceptionFPE (SIM_DESC sd, unsigned int double_op_p)
   if (((PSW & (PSW_NP|PSW_ID)) == 0)
       || !(FPSR & (double_op_p ? FPSR_DEM : FPSR_SEM)))		
     {								
+      v850_link_clear ();
       EIPC = PC;							
       EIPSW = PSW;						
       EIIC = (FPSR & (double_op_p ? FPSR_DEM : FPSR_SEM)) 	
@@ -3708,3 +3710,83 @@ mpu_store_mem_test (SIM_DESC sd, unsigned int addr, int size, int base_reg)
   return result;
 }
 
+
+void
+v850_link_set (uint32_t addr, int len)
+{
+  struct v850_sim_cpu *v850_cpu = V850_SIM_CPU (STATE_CPU (simulator, 0));
+
+  v850_cpu->link_valid = 1;
+  v850_cpu->link_addr = addr;
+  v850_cpu->link_size = len;
+}
+
+void
+v850_link_clear (void)
+{
+  V850_SIM_CPU (STATE_CPU (simulator, 0))->link_valid = 0;
+}
+
+int
+v850_link_check (uint32_t addr, int len)
+{
+  struct v850_sim_cpu *v850_cpu = V850_SIM_CPU (STATE_CPU (simulator, 0));
+
+  return (v850_cpu->link_valid
+	  && v850_cpu->link_addr == addr
+	  && v850_cpu->link_size == len);
+}
+
+void
+v850_link_store (uint32_t addr, int len)
+{
+  struct v850_sim_cpu *v850_cpu = V850_SIM_CPU (STATE_CPU (simulator, 0));
+  uint32_t block = v850_cpu->link_addr & ~(uint32_t) 31;
+
+  if (v850_cpu->link_valid
+      && ((addr & ~(uint32_t) 31) == block
+	  || ((addr + len - 1) & ~(uint32_t) 31) == block))
+    v850_cpu->link_valid = 0;
+}
+
+void
+v850_clip (int reg1, int reg2, int32_t min, int32_t max, int is_unsigned)
+{
+  uint32_t value = State.regs[reg1];
+  int32_t result;
+  int ov = 0;
+
+  if (is_unsigned)
+    {
+      if (value > (uint32_t) max)
+	{
+	  result = max;
+	  ov = 1;
+	}
+      else
+	result = value;
+    }
+  else
+    {
+      result = value;
+      if (result > max)
+	{
+	  result = max;
+	  ov = 1;
+	}
+      else if (result < min)
+	{
+	  result = min;
+	  ov = 1;
+	}
+    }
+
+  State.regs[reg2] = result;
+  PSW &= ~(PSW_Z | PSW_S | PSW_OV | PSW_CY);
+  if (result == 0)
+    PSW |= PSW_Z;
+  if (!is_unsigned && result < 0)
+    PSW |= PSW_S;
+  if (ov)
+    PSW |= PSW_OV | PSW_SAT;
+}

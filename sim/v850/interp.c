@@ -87,6 +87,7 @@ do_interrupt (SIM_DESC sd, void *data)
 	  /* NMI can be delivered.  Do not deschedule pending_nmi as
              that, if still in the event queue, is a second NMI that
              needs to be delivered later. */
+	  v850_link_clear ();
 	  FEPC = PC;
 	  FEPSW = PSW;
 	  /* Set the FECC part of the ECR. */
@@ -111,6 +112,7 @@ do_interrupt (SIM_DESC sd, void *data)
 	}
       else
 	{
+	  v850_link_clear ();
 	  /* save context */
 	  EIPC = PC;
 	  EIPSW = PSW;
@@ -310,6 +312,7 @@ sim_create_inferior (SIM_DESC      sd,
 		     char * const *env)
 {
   memset (&State, 0, sizeof (State));
+  v850_link_clear ();
   if (prog_bfd != NULL)
     PC = bfd_get_start_address (prog_bfd);
   return SIM_RC_OK;

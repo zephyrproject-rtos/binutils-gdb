@@ -84,6 +84,10 @@ int v850_float_compare(SIM_DESC sd, int cmp, sim_fpu wop1, sim_fpu wop2, int dou
 /* MEMORY ACCESS */
 uint32_t load_data_mem(SIM_DESC sd, address_word addr, int len);
 void store_data_mem(SIM_DESC sd, address_word addr, int len, uint32_t data);
+void v850_link_set (uint32_t addr, int len);
+void v850_link_clear (void);
+int v850_link_check (uint32_t addr, int len);
+void v850_clip (int reg1, int reg2, int32_t min, int32_t max, int is_unsigned);
 
 unsigned long Add32 (unsigned long a1, unsigned long a2, int * carry);
 
