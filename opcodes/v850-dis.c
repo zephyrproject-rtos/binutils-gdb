@@ -1234,3 +1234,30 @@ with the -M switch:\n"));
   fprintf (stream, _("  g4  Print RH850 G4 system register names.\n"));
   fprintf (stream, _("  g4mh2  Print RH850 G4MH2 system register names.\n"));
 }
+
+const disasm_options_and_args_t *
+disassembler_options_v850 (void)
+{
+  static disasm_options_and_args_t *opts_and_args;
+
+  if (opts_and_args == NULL)
+    {
+      disasm_options_t *opts;
+
+      opts_and_args = XNEW (disasm_options_and_args_t);
+      opts_and_args->args = NULL;
+
+      opts = &opts_and_args->options;
+      opts->name = XNEWVEC (const char *, 3);
+      opts->description = XNEWVEC (const char *, 3);
+      opts->arg = NULL;
+      opts->name[0] = "g4";
+      opts->description[0] = _("Print RH850 G4 system register names.");
+      opts->name[1] = "g4mh2";
+      opts->description[1] = _("Print RH850 G4MH2 system register names.");
+      opts->name[2] = NULL;
+      opts->description[2] = NULL;
+    }
+
+  return opts_and_args;
+}
