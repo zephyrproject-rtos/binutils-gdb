@@ -1438,6 +1438,8 @@ const struct v850_opcode v850_opcodes[] =
 { "binsm",two (0x07e0, 0x00b0),	two (0x07e0, 0x07f1), {R1, POS_M, WIDTH_M, R2}, 		0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_ALIAS },
 { "binsl",two (0x07e0, 0x00d0),	two (0x07e0, 0x07f1), {R1, POS_L, WIDTH_L, R2}, 		0, PROCESSOR_V850E3V5_UP | PROCESSOR_OPTION_ALIAS },
 
+{ "cll",	two (0xffff, 0xf160),	two (0xffff, 0xffff),	{0},			0, PROCESSOR_V850E3V5_UP },
+
 { "cache",	two (0xe7e0, 0x0160),	two (0xe7e0, 0x07ff),	{CACHEOP, R1}, 		2, PROCESSOR_V850E3V5_UP },
 
 { "callt",	one (0x0200),		one (0xffc0), 	      	{IMM6},			0, PROCESSOR_NOT_V850 },
