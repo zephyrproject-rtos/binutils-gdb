@@ -539,6 +539,12 @@ set_g4 (int ignore ATTRIBUTE_UNUSED)
 }
 
 static void
+set_g4mh2 (int ignore ATTRIBUTE_UNUSED)
+{
+  processor_mask |= PROCESSOR_OPTION_G4 | PROCESSOR_OPTION_G4MH2;
+}
+
+static void
 v850_longcode (int type)
 {
   expressionS ex;
@@ -597,6 +603,7 @@ const pseudo_typeS md_pseudo_table[] =
   { "v850e2v4",		set_machine,		bfd_mach_v850e3v5 	},
   { "v850e3v5",		set_machine,		bfd_mach_v850e3v5 	},
   { "g4",		set_g4,		0			},
+  { "g4mh2",		set_g4mh2,	0			},
   { "longcall",		v850_longcode,		1			},
   { "longjump",		v850_longcode,		2			},
   { NULL,		NULL,			0			}
@@ -888,6 +895,145 @@ static const struct reg_name g4_system_registers[] =
 #define G4_SYSREG_NAME_CNT					\
   (sizeof (g4_system_registers) / sizeof (struct reg_name))
 
+/* This table is sorted.  Suitable for searching by a binary search.  */
+static const struct reg_name g4mh2_system_registers[] =
+{
+  { "bmid",         65, PROCESSOR_V850E3V5_UP },
+  { "brpctrl0",    392, PROCESSOR_V850E3V5_UP },
+  { "ctbp",         20, PROCESSOR_V850E3V5_UP },
+  { "ctpc",         16, PROCESSOR_V850E3V5_UP },
+  { "ctpsw",        17, PROCESSOR_V850E3V5_UP },
+  { "dbgen",        96, PROCESSOR_V850E3V5_UP },
+  { "ebase",        35, PROCESSOR_V850E3V5_UP },
+  { "eiic",         13, PROCESSOR_V850E3V5_UP },
+  { "eipc",          0, PROCESSOR_V850E3V5_UP },
+  { "eipsw",         1, PROCESSOR_V850E3V5_UP },
+  { "eipswh",       18, PROCESSOR_V850E3V5_UP },
+  { "eiwr",         28, PROCESSOR_V850E3V5_UP },
+  { "feic",         14, PROCESSOR_V850E3V5_UP },
+  { "fepc",          2, PROCESSOR_V850E3V5_UP },
+  { "fepsw",         3, PROCESSOR_V850E3V5_UP },
+  { "fepswh",       19, PROCESSOR_V850E3V5_UP },
+  { "fewr",         29, PROCESSOR_V850E3V5_UP },
+  { "fpcc",          9, PROCESSOR_V850E3V5_UP },
+  { "fpcfg",        10, PROCESSOR_V850E3V5_UP },
+  { "fpepc",         7, PROCESSOR_V850E3V5_UP },
+  { "fpsr",          6, PROCESSOR_V850E3V5_UP },
+  { "fpst",          8, PROCESSOR_V850E3V5_UP },
+  { "gmcfg",        49, PROCESSOR_V850E3V5_UP },
+  { "gmebase",     307, PROCESSOR_V850E3V5_UP },
+  { "gmeiic",      301, PROCESSOR_V850E3V5_UP },
+  { "gmeipc",      288, PROCESSOR_V850E3V5_UP },
+  { "gmeipsw",     289, PROCESSOR_V850E3V5_UP },
+  { "gmeiwr",      316, PROCESSOR_V850E3V5_UP },
+  { "gmfeic",      302, PROCESSOR_V850E3V5_UP },
+  { "gmfepc",      290, PROCESSOR_V850E3V5_UP },
+  { "gmfepsw",     291, PROCESSOR_V850E3V5_UP },
+  { "gmfewr",      317, PROCESSOR_V850E3V5_UP },
+  { "gmintbp",     308, PROCESSOR_V850E3V5_UP },
+  { "gmintcfg",    309, PROCESSOR_V850E3V5_UP },
+  { "gmmea",       294, PROCESSOR_V850E3V5_UP },
+  { "gmmei",       296, PROCESSOR_V850E3V5_UP },
+  { "gmmpm",       313, PROCESSOR_V850E3V5_UP },
+  { "gmpeid",      318, PROCESSOR_V850E3V5_UP },
+  { "gmplmr",      310, PROCESSOR_V850E3V5_UP },
+  { "gmpsw",       293, PROCESSOR_V850E3V5_UP },
+  { "gmspid",      304, PROCESSOR_V850E3V5_UP },
+  { "gmspidlist",  305, PROCESSOR_V850E3V5_UP },
+  { "gmsvlock",    312, PROCESSOR_V850E3V5_UP },
+  { "hvcfg",        48, PROCESSOR_V850E3V5_UP },
+  { "hvsb",         52, PROCESSOR_V850E3V5_UP },
+  { "iccfg",       154, PROCESSOR_V850E3V5_UP },
+  { "icctrl",      152, PROCESSOR_V850E3V5_UP },
+  { "icdath",      147, PROCESSOR_V850E3V5_UP },
+  { "icdatl",      146, PROCESSOR_V850E3V5_UP },
+  { "icerr",       156, PROCESSOR_V850E3V5_UP },
+  { "icsr",         76, PROCESSOR_V850E3V5_UP },
+  { "ictagh",      145, PROCESSOR_V850E3V5_UP },
+  { "ictagl",      144, PROCESSOR_V850E3V5_UP },
+  { "ifcr",        389, PROCESSOR_V850E3V5_UP },
+  { "imsr",         75, PROCESSOR_V850E3V5_UP },
+  { "intbp",        36, PROCESSOR_V850E3V5_UP },
+  { "intcfg",       77, PROCESSOR_V850E3V5_UP },
+  { "ispr",         74, PROCESSOR_V850E3V5_UP },
+  { "l1rcfg",      428, PROCESSOR_V850E3V5_UP },
+  { "lscfg",       386, PROCESSOR_V850E3V5_UP },
+  { "lstest0",     384, PROCESSOR_V850E3V5_UP },
+  { "lstest1",     385, PROCESSOR_V850E3V5_UP },
+  { "mca",         168, PROCESSOR_V850E3V5_UP },
+  { "mcc",         170, PROCESSOR_V850E3V5_UP },
+  { "mci",         172, PROCESSOR_V850E3V5_UP },
+  { "mcr",         171, PROCESSOR_V850E3V5_UP },
+  { "mcs",         169, PROCESSOR_V850E3V5_UP },
+  { "mctl",         37, PROCESSOR_V850E3V5_UP },
+  { "mea",          70, PROCESSOR_V850E3V5_UP },
+  { "mei",          72, PROCESSOR_V850E3V5_UP },
+  { "mpat",        182, PROCESSOR_V850E3V5_UP },
+  { "mpbk",        177, PROCESSOR_V850E3V5_UP },
+  { "mpcfg",       162, PROCESSOR_V850E3V5_UP },
+  { "mpid0",       184, PROCESSOR_V850E3V5_UP },
+  { "mpid1",       185, PROCESSOR_V850E3V5_UP },
+  { "mpid2",       186, PROCESSOR_V850E3V5_UP },
+  { "mpid3",       187, PROCESSOR_V850E3V5_UP },
+  { "mpid4",       188, PROCESSOR_V850E3V5_UP },
+  { "mpid5",       189, PROCESSOR_V850E3V5_UP },
+  { "mpid6",       190, PROCESSOR_V850E3V5_UP },
+  { "mpid7",       191, PROCESSOR_V850E3V5_UP },
+  { "mpidx",       176, PROCESSOR_V850E3V5_UP },
+  { "mpla",        180, PROCESSOR_V850E3V5_UP },
+  { "mpm",         160, PROCESSOR_V850E3V5_UP },
+  { "mpua",        181, PROCESSOR_V850E3V5_UP },
+  { "peid",         64, PROCESSOR_V850E3V5_UP },
+  { "pid",          38, PROCESSOR_V850E3V5_UP },
+  { "plmr",         78, PROCESSOR_V850E3V5_UP },
+  { "pmcount0",    464, PROCESSOR_V850E3V5_UP },
+  { "pmcount1",    465, PROCESSOR_V850E3V5_UP },
+  { "pmcount2",    466, PROCESSOR_V850E3V5_UP },
+  { "pmcount3",    467, PROCESSOR_V850E3V5_UP },
+  { "pmcount4",    468, PROCESSOR_V850E3V5_UP },
+  { "pmcount5",    469, PROCESSOR_V850E3V5_UP },
+  { "pmcount6",    470, PROCESSOR_V850E3V5_UP },
+  { "pmcount7",    471, PROCESSOR_V850E3V5_UP },
+  { "pmctrl0",     448, PROCESSOR_V850E3V5_UP },
+  { "pmctrl1",     449, PROCESSOR_V850E3V5_UP },
+  { "pmctrl2",     450, PROCESSOR_V850E3V5_UP },
+  { "pmctrl3",     451, PROCESSOR_V850E3V5_UP },
+  { "pmctrl4",     452, PROCESSOR_V850E3V5_UP },
+  { "pmctrl5",     453, PROCESSOR_V850E3V5_UP },
+  { "pmctrl6",     454, PROCESSOR_V850E3V5_UP },
+  { "pmctrl7",     455, PROCESSOR_V850E3V5_UP },
+  { "pmgmctrl",    361, PROCESSOR_V850E3V5_UP },
+  { "pmsubcnd0",   480, PROCESSOR_V850E3V5_UP },
+  { "pmsubcnd1",   481, PROCESSOR_V850E3V5_UP },
+  { "pmsubcnd2",   482, PROCESSOR_V850E3V5_UP },
+  { "pmsubcnd3",   483, PROCESSOR_V850E3V5_UP },
+  { "pmsubcnd4",   484, PROCESSOR_V850E3V5_UP },
+  { "pmsubcnd5",   485, PROCESSOR_V850E3V5_UP },
+  { "pmsubcnd6",   486, PROCESSOR_V850E3V5_UP },
+  { "pmsubcnd7",   487, PROCESSOR_V850E3V5_UP },
+  { "pmumctrl",    360, PROCESSOR_V850E3V5_UP },
+  { "psw",           5, PROCESSOR_V850E3V5_UP },
+  { "pswh",         15, PROCESSOR_V850E3V5_UP },
+  { "rbase",        34, PROCESSOR_V850E3V5_UP },
+  { "rbcr0",        79, PROCESSOR_V850E3V5_UP },
+  { "rbcr1",        80, PROCESSOR_V850E3V5_UP },
+  { "rbip",         82, PROCESSOR_V850E3V5_UP },
+  { "rbnr",         81, PROCESSOR_V850E3V5_UP },
+  { "rdbcr",       440, PROCESSOR_V850E3V5_UP },
+  { "scbp",         44, PROCESSOR_V850E3V5_UP },
+  { "sccfg",        43, PROCESSOR_V850E3V5_UP },
+  { "snzcfg",       21, PROCESSOR_V850E3V5_UP },
+  { "spid",         32, PROCESSOR_V850E3V5_UP },
+  { "spidlist",     33, PROCESSOR_V850E3V5_UP },
+  { "svlock",       40, PROCESSOR_V850E3V5_UP },
+  { "tscounth",    353, PROCESSOR_V850E3V5_UP },
+  { "tscountl",    352, PROCESSOR_V850E3V5_UP },
+  { "tsctrl",      354, PROCESSOR_V850E3V5_UP },
+};
+
+#define G4MH2_SYSREG_NAME_CNT					\
+  (sizeof (g4mh2_system_registers) / sizeof (struct reg_name))
+
 
 static const struct reg_name cc_names[] =
 {
@@ -1152,7 +1298,10 @@ system_register_name (expressionS *expressionP,
   start = input_line_pointer;
   c = get_symbol_name (&name);
   reg_number = -1;
-  if (processor_mask & PROCESSOR_OPTION_G4)
+  if (processor_mask & PROCESSOR_OPTION_G4MH2)
+    reg_number = reg_name_search (g4mh2_system_registers,
+				  G4MH2_SYSREG_NAME_CNT, name, accept_numbers);
+  else if (processor_mask & PROCESSOR_OPTION_G4)
     reg_number = reg_name_search (g4_system_registers, G4_SYSREG_NAME_CNT,
 				  name, accept_numbers);
   if (reg_number < 0)
@@ -1651,6 +1800,7 @@ md_show_usage (FILE *stream)
   fprintf (stream, _("  --disp-size-default-32    branch displacement with unknown size is 32 bits\n"));
   fprintf (stream, _("  -mextension               enable extension opcode support\n"));
   fprintf (stream, _("  -mg4                      enable RH850 G4 opcode support\n"));
+  fprintf (stream, _("  -mg4mh2                   enable RH850 G4MH2 opcode support\n"));
   fprintf (stream, _("  -mno-bcond17		  disable b<cond> disp17 instruction\n"));
   fprintf (stream, _("  -mno-stld23		  disable st/ld offset23 instruction\n"));
   fprintf (stream, _("  -mgcc-abi                 Mark the binary as using the old GCC ABI\n"));
@@ -1727,6 +1877,10 @@ md_parse_option (int c, const char *arg)
   else if (strcmp (arg, "g4") == 0)
     {
       processor_mask |= PROCESSOR_OPTION_G4;
+    }
+  else if (strcmp (arg, "g4mh2") == 0)
+    {
+      processor_mask |= PROCESSOR_OPTION_G4 | PROCESSOR_OPTION_G4MH2;
     }
   else if (strcmp (arg, "no-bcond17") == 0)
     {
@@ -2566,7 +2720,9 @@ md_assemble (char *str)
 
 	  if (   (strcmp (opcode->name, "pushsp") == 0
 	       || strcmp (opcode->name, "popsp") == 0
-	       || strcmp (opcode->name, "dbpush") == 0)
+	       || strcmp (opcode->name, "dbpush") == 0
+	       || strcmp (opcode->name, "ldm.mp") == 0
+	       || strcmp (opcode->name, "stm.mp") == 0)
 	      && (*str == '-'))
 	    ++str;
 
