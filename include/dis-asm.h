@@ -391,6 +391,7 @@ extern void print_arm_disassembler_options (FILE *);
 extern void print_arc_disassembler_options (FILE *);
 extern void print_kvx_disassembler_options(FILE *);
 extern void print_s390_disassembler_options (FILE *);
+extern void print_v850_disassembler_options (FILE *);
 extern void print_wasm32_disassembler_options (FILE *);
 extern void print_loongarch_disassembler_options (FILE *);
 extern void print_bpf_disassembler_options (FILE *);
@@ -408,6 +409,7 @@ extern const disasm_options_and_args_t *disassembler_options_mips (void);
 extern const disasm_options_and_args_t *disassembler_options_powerpc (void);
 extern const disasm_options_and_args_t *disassembler_options_riscv (void);
 extern const disasm_options_and_args_t *disassembler_options_s390 (void);
+extern const disasm_options_and_args_t *disassembler_options_v850 (void);
 
 /* Fetch the disassembler for a given architecture ARC, endianess (big
    endian if BIG is true), bfd_mach value MACH, and ABFD, if that support

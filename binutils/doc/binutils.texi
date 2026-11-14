@@ -2764,6 +2764,15 @@ ROM dumps).  In these cases, the function entry mask would otherwise
 be decoded as VAX instructions, which would probably lead the rest
 of the function being wrongly disassembled.
 
+For V850, @option{-M g4} prints the system register operands of
+@code{ldsr} and @code{stsr} with their RH850 G4 names, using both the
+register number and the selection ID.  @option{-M g4mh2} does the same
+with the RH850 G4MH2 names.  A register number and selection ID pair
+without a name is printed as a number.  Without these options the names
+are those of the older V850 cores.  The RH850 G4, G4MH2 and FXU
+instructions are decoded for V850E3V5 objects without an option;
+@option{-M g4mh2} also names the FXU system registers.
+
 @item -p
 @itemx --private-headers
 Print information that is specific to the object file format.  The exact

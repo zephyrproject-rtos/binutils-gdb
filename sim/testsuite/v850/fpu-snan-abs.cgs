@@ -1,0 +1,19 @@
+# v850 absf and negf of a signaling NaN raise no invalid operation,
+# also with the exceptions enabled
+# mach: v850e3v5
+
+	.include "testutils.inc"
+
+	seti	0x000203e0, r20
+	ldsr	r20, 6, 0
+
+	seti	0x7f800001, r1
+	absf.s	r1, r3
+	reg	r3, 0x7f800001
+	negf.s	r1, r3
+	reg	r3, 0xff800001
+	stsr	6, r21, 0
+	andi	0x3ff, r21, r21
+	reg	r21, 0x3e0
+
+	pass

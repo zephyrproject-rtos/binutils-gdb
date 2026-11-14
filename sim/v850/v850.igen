@@ -291,6 +291,18 @@ rrrrr,11111100000 + wwwww,01101000000:XII:::bsw
 
 
 
+// CACHE
+111,pp,111111,RRRRR + PPPPP,00101100000:X:::cache
+*v850e3v5
+"cache <pp><PPPPP>, [r<reg1>]"
+{
+  TRACE_ALU_INPUT1 (GR[reg1]);
+  if (((pp << 5) | PPPPP) == 0x7e)
+    v850_link_clear ();
+}
+
+
+
 // CAXI
 rrrrr,111111,RRRRR + wwwww,00011101110:IX:::caxi
 *v850e2
@@ -338,6 +350,48 @@ rrrrr,111111,RRRRR + wwwww,00011101110:IX:::caxi
       TRACE_ALU_RESULT1 (GR[reg3]);
     }
 }
+
+
+// CLIP.B
+rrrrr,111111,RRRRR + 0000000000001000:IX:::clip.b
+*v850e3v5
+"clip.b r<reg1>, r<reg2>"
+{
+  TRACE_ALU_INPUT1 (GR[reg1]);
+  v850_clip (reg1, reg2, -0x80, 0x7f, 0);
+  TRACE_ALU_RESULT1 (GR[reg2]);
+}
+
+// CLIP.BU
+rrrrr,111111,RRRRR + 0000000000001010:IX:::clip.bu
+*v850e3v5
+"clip.bu r<reg1>, r<reg2>"
+{
+  TRACE_ALU_INPUT1 (GR[reg1]);
+  v850_clip (reg1, reg2, 0, 0xff, 1);
+  TRACE_ALU_RESULT1 (GR[reg2]);
+}
+
+// CLIP.H
+rrrrr,111111,RRRRR + 0000000000001100:IX:::clip.h
+*v850e3v5
+"clip.h r<reg1>, r<reg2>"
+{
+  TRACE_ALU_INPUT1 (GR[reg1]);
+  v850_clip (reg1, reg2, -0x8000, 0x7fff, 0);
+  TRACE_ALU_RESULT1 (GR[reg2]);
+}
+
+// CLIP.HU
+rrrrr,111111,RRRRR + 0000000000001110:IX:::clip.hu
+*v850e3v5
+"clip.hu r<reg1>, r<reg2>"
+{
+  TRACE_ALU_INPUT1 (GR[reg1]);
+  v850_clip (reg1, reg2, 0, 0xffff, 1);
+  TRACE_ALU_RESULT1 (GR[reg2]);
+}
+
 
 
 // CLR1
@@ -634,6 +688,7 @@ rrrrr,111111,RRRRR + wwwww,01011111110:XI:::divqu
 {
   TRACE_ALU_INPUT1 (MPM & MPM_AUE);
 
+  v850_link_clear ();
   nia = EIPC;	/* next PC */
   if (MPM & MPM_AUE)
     {
@@ -660,6 +715,7 @@ rrrrr,111111,RRRRR + wwwww,01011111110:XI:::divqu
 {
   TRACE_ALU_INPUT1 (MPM & MPM_AUE);
 
+  v850_link_clear ();
   nia = FEPC;	/* next PC */
   if (MPM & MPM_AUE)
     {
@@ -685,6 +741,7 @@ rrrrr,111111,RRRRR + wwwww,01011111110:XI:::divqu
 {
   TRACE_ALU_INPUT0 ();
 
+  v850_link_clear ();
   FEPC = PC + 2;
   FEPSW = PSW;
   ECR &= ~ECR_FECC;
@@ -943,18 +1000,57 @@ rrrrr!0,111111,RRRRR + ddddddddddddddd,1:VII:::ld.hu
 
 
 
+// LDL.BU
+00001,111111,RRRRR + wwwww,01101110000:VII:::ldl.bu
+*v850e3v5
+"ldl.bu [r<reg1>], r<reg3>"
+{
+  uint32_t addr = GR[reg1];
+  GR[reg3] = load_data_mem (SD, addr, 1);
+  v850_link_set (addr, 1);
+  TRACE_LD (addr, GR[reg3]);
+}
+
+// LDL.HU
+00001,111111,RRRRR + wwwww,01101110100:VII:::ldl.hu
+*v850e3v5
+"ldl.hu [r<reg1>], r<reg3>"
+{
+  uint32_t addr = GR[reg1];
+  GR[reg3] = load_data_mem (SD, addr, 2);
+  v850_link_set (addr, 2);
+  TRACE_LD (addr, GR[reg3]);
+}
+
+// LDL.W
+00000,111111,RRRRR + wwwww,01101111000:VII:::ldl.w
+*v850e3v5
+"ldl.w [r<reg1>], r<reg3>"
+{
+  uint32_t addr = GR[reg1];
+  GR[reg3] = load_data_mem (SD, addr, 4);
+  v850_link_set (addr, 4);
+  TRACE_LD (addr, GR[reg3]);
+}
+
+
+
 // LDSR
 regID,111111,RRRRR + selID,00000100000:IX:::ldsr
 "ldsr r<reg1>, s<regID>":(selID == 0)
 "ldsr r<reg1>, s<regID>, <selID>"
 {
   uint32_t sreg = GR[reg1];
+  unsigned int bank = BSEL & 0xffff;
   TRACE_ALU_INPUT1 (GR[reg1]);
 
-  /* FIXME: For now we ignore the selID.  */
+  if (idecode_issue == idecode_v850e3v5_issue
+      && regID >= FPSR_REGNO && regID <= FPEC_REGNO)
+    bank = 0x2000;
+
   if (idecode_issue == idecode_v850e3v5_issue && selID != 0)
     {
-      V850_SIM_CPU (CPU)->reg.selID_sregs[selID][regID] = sreg;
+      V850_SIM_CPU (CPU)->reg.selID_sregs[selID - 1][regID] = sreg;
     }
   else if ((   idecode_issue == idecode_v850e2_issue
             || idecode_issue == idecode_v850e3v5_issue
@@ -963,7 +1059,7 @@ regID,111111,RRRRR + selID,00000100000:IX:::ldsr
     {
       int protect_p = (PSW & PSW_NPV) ? 1 : 0;
 
-      switch (BSEL & 0xffff)
+      switch (bank)
 	{
 	case 0x0000:
 	  if ((PSW & PSW_NPV)
@@ -1025,7 +1121,7 @@ regID,111111,RRRRR + selID,00000100000:IX:::ldsr
 
       if (!protect_p)
 	{
-	  switch (BSEL & 0xffff)
+	  switch (bank)
 	    {
 	    case 0x0000:
 	    case 0xff00:	/* user0 bank */
@@ -1412,6 +1508,37 @@ rrrrr,110100,RRRRR + iiiiiiiiiiiiiiii:VI:::ori
 
 
 
+// POPSP
+01100,111111,RRRRR + wwwww,00101100000:XI:::popsp
+*v850e3v5
+"popsp r<reg1>-r<reg3>"
+{
+  uint32_t tmp = SP;
+  int cur;
+
+  if (reg1 <= reg3)
+    {
+      for (cur = reg3; cur >= (int) reg1; cur--)
+	{
+	  uint32_t data = load_data_mem (SD, tmp & ~3, 4);
+	  if (cur != SP_REGNO)
+	    GR[cur] = data;
+	  tmp += 4;
+	}
+      SP = tmp;
+    }
+}
+
+// PREF
+11011,111111,RRRRR + PPPPP,00101100000:X:::pref
+*v850e3v5
+"pref <PPPPP>, [r<reg1>]"
+{
+  TRACE_ALU_INPUT1 (GR[reg1]);
+}
+
+
+
 // PREPARE
 0000011110,iiiii,L + LLLLLLLLLLL,00001:XIII:::prepare
 *v850e
@@ -1484,6 +1611,27 @@ rrrrr,110100,RRRRR + iiiiiiiiiiiiiiii:VI:::ori
 {
   COMPAT_2 (OP_1B0780 ());
 }
+
+// PUSHSP
+01000,111111,RRRRR + wwwww,00101100000:XI:::pushsp
+*v850e3v5
+"pushsp r<reg1>-r<reg3>"
+{
+  uint32_t tmp = SP;
+  int cur;
+
+  if (reg1 <= reg3)
+    {
+      for (cur = reg1; cur <= (int) reg3; cur++)
+	{
+	  tmp -= 4;
+	  store_data_mem (SD, tmp & ~3, 4, GR[cur]);
+	}
+      SP = tmp;
+    }
+}
+
+
 
 // RETI
 0000011111100000 + 0000000101000000:X:::reti
@@ -2004,6 +2152,15 @@ rrrrr!0,0000111,dddd:IV:::sld.hu
 
 
 
+// SNOOZE
+0000111111100000 + 0000000100100000:X:::snooze
+*v850e3v5
+"snooze"
+{
+}
+
+
+
 // SST
 rrrrr,0111,ddddddd:IV:::sst.b
 "sst.b r<reg2>, <disp7>[ep]"
@@ -2084,18 +2241,72 @@ rrrrr,111011,RRRRR + ddddddddddddddd,1:VII:::st.w
 }
 
 
+// STC.B
+00000,111111,RRRRR + wwwww,01101110010:VII:::stc.b
+*v850e3v5
+"stc.b r<reg3>, [r<reg1>]"
+{
+  uint32_t addr = GR[reg1];
+  int ok = v850_link_check (addr, 1);
+
+  if (ok)
+    store_data_mem (SD, addr, 1, GR[reg3]);
+  v850_link_clear ();
+  GR[reg3] = ok;
+}
+
+// STC.H
+00000,111111,RRRRR + wwwww,01101110110:VII:::stc.h
+*v850e3v5
+"stc.h r<reg3>, [r<reg1>]"
+{
+  uint32_t addr = GR[reg1];
+  int ok = v850_link_check (addr, 2);
+
+  if (ok)
+    store_data_mem (SD, addr, 2, GR[reg3]);
+  v850_link_clear ();
+  GR[reg3] = ok;
+}
+
+// STC.W
+00000,111111,RRRRR + wwwww,01101111010:VII:::stc.w
+*v850e3v5
+"stc.w r<reg3>, [r<reg1>]"
+{
+  uint32_t addr = GR[reg1];
+  int ok = v850_link_check (addr, 4);
+
+  if (ok)
+    store_data_mem (SD, addr, 4, GR[reg3]);
+  v850_link_clear ();
+  GR[reg3] = ok;
+}
+
+
+
 // STSR
-rrrrr,111111,regID + 0000000001000000:IX:::stsr
-"stsr s<regID>, r<reg2>"
+rrrrr,111111,regID + selID,00001000000:IX:::stsr
+"stsr s<regID>, r<reg2>":(selID == 0)
+"stsr s<regID>, r<reg2>, <selID>"
 {
   uint32_t sreg = 0;
+  unsigned int bank = BSEL & 0xffff;
 
-  if ((idecode_issue == idecode_v850e2_issue
+  if (idecode_issue == idecode_v850e3v5_issue
+      && regID >= FPSR_REGNO && regID <= FPEC_REGNO)
+    bank = 0x2000;
+
+  if (idecode_issue == idecode_v850e3v5_issue && selID != 0)
+    {
+      sreg = V850_SIM_CPU (CPU)->reg.selID_sregs[selID - 1][regID];
+    }
+  else if ((idecode_issue == idecode_v850e2_issue
        || idecode_issue == idecode_v850e3v5_issue
        || idecode_issue == idecode_v850e2v3_issue)
       && regID < 28)
     {
-      switch (BSEL & 0xffff)
+      switch (bank)
 	{
 	case 0x0000:
 	case 0xff00:	/* USER 0 */
@@ -2208,6 +2419,36 @@ rrrrr,001100,RRRRR:I:::subr
   GR[reg1] = EXTEND16 (GR[reg1]);
   TRACE_ALU_RESULT (GR[reg1]);
 }
+
+// SYNCE
+0000000000011101:I:::synce
+*v850e3v5
+"synce"
+{
+}
+
+// SYNCI
+0000000000011100:I:::synci
+*v850e3v5
+"synci"
+{
+}
+
+// SYNCM
+0000000000011110:I:::syncm
+*v850e3v5
+"syncm"
+{
+}
+
+// SYNCP
+0000000000011111:I:::syncp
+*v850e3v5
+"syncp"
+{
+}
+
+
 
 // TRAP
 00000111111,iiiii + 0000000100000000:X:::trap
@@ -2370,15 +2611,19 @@ rrrr,011111100000 + wwww,010001011000:F_I:::absf_d
 "absf.d r<reg2e>, r<reg3e>"
 {
   sim_fpu ans, wop;
-  sim_fpu_status status;
 
   sim_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
-  status = sim_fpu_abs (&ans, &wop);
-  check_invalid_snan (SD, status, 1);
+  sim_fpu_abs (&ans, &wop);
 
-  sim_fpu_to232 (&GR[reg3e+1], &GR[reg3e], &ans);
+  if (sim_fpu_is_nan (&wop))
+    {
+      GR[reg3e+1] = GR[reg2e+1] & ~0x80000000;
+      GR[reg3e] = GR[reg2e];
+    }
+  else
+    sim_fpu_to232 (&GR[reg3e+1], &GR[reg3e], &ans);
 
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -2390,15 +2635,16 @@ rrrrr,11111100000 + wwwww,10001001000:F_I:::absf_s
 "absf.s r<reg2>, r<reg3>"
 {
   sim_fpu ans, wop;
-  sim_fpu_status status;
 
   sim_fpu_32to (&wop, GR[reg2]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
-  status = sim_fpu_abs (&ans, &wop);
-  check_invalid_snan (SD, status, 0);
+  sim_fpu_abs (&ans, &wop);
 
-  sim_fpu_to32 (&GR[reg3], &ans);
+  if (sim_fpu_is_nan (&wop))
+    GR[reg3] = GR[reg2] & ~0x80000000;
+  else
+    sim_fpu_to32 (&GR[reg3], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
 
@@ -2411,15 +2657,19 @@ rrrr,0111111,RRRR,0 + wwww,010001110000:F_I:::addf_d
   sim_fpu ans, wop1, wop2;
   sim_fpu_status status;
 
-  sim_fpu_232to (&wop1, GR[reg1e+1], GR[reg1e]);
-  sim_fpu_232to (&wop2, GR[reg2e+1], GR[reg2e]);
+  v850_fpu_232to (&wop1, GR[reg1e+1], GR[reg1e]);
+  v850_fpu_232to (&wop2, GR[reg2e+1], GR[reg2e]);
   TRACE_FP_INPUT_FPU2 (&wop1, &wop2);
 
   status = sim_fpu_add (&ans, &wop1, &wop2);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  v850_fpu_sum_zero (&ans, &wop1, &wop2, 0, status, FPSR_GET_ROUND ());
+  status |= v850_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEI | FPSR_XEO | FPSR_XEU, 1);
 
+  v850_fpu_nan_result (&ans, 1, 1, 2,
+		       (const uint64_t []) { V850_GR64 (reg2e),
+					     V850_GR64 (reg1e) });
   sim_fpu_to232 (&GR[reg3e+1], &GR[reg3e], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -2433,15 +2683,18 @@ rrrrr,111111,RRRRR + wwwww,10001100000:F_I:::addf_s
   sim_fpu ans, wop1, wop2;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop1, GR[reg1]);
-  sim_fpu_32to (&wop2, GR[reg2]);
+  v850_fpu_32to (&wop1, GR[reg1]);
+  v850_fpu_32to (&wop2, GR[reg2]);
   TRACE_FP_INPUT_FPU2 (&wop1, &wop2);
 
   status = sim_fpu_add (&ans, &wop1, &wop2);
-  status |= sim_fpu_round_32 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  v850_fpu_sum_zero (&ans, &wop1, &wop2, 0, status, FPSR_GET_ROUND ());
+  status |= v850_fpu_round_32 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEI | FPSR_XEO | FPSR_XEU, 0);
 
+  v850_fpu_nan_result (&ans, 0, 0, 2,
+		       (const uint64_t []) { GR[reg2], GR[reg1] });
   sim_fpu_to32 (&GR[reg3], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -2565,10 +2818,10 @@ rrrr,011111100100 + wwww,010001010100:F_I:::cvtf_dl
   sim_fpu wop;
   sim_fpu_status status;
 
-  sim_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
+  v850_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
-  status = sim_fpu_round_64 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_zero);
+  status = v850_fpu_round_64 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_zero);
   status |= sim_fpu_to64i (&ans, &wop, FPSR_GET_ROUND());
 
   check_cvt_fi (SD, status, 1);
@@ -2587,13 +2840,15 @@ rrrr,011111100011 + wwwww,10001010010:F_I:::cvtf_ds
   sim_fpu wop;
   sim_fpu_status status;
 
-  sim_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
+  v850_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
-  status = sim_fpu_round_32 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  status = v850_fpu_round_32 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   check_cvt_fi (SD, status, 0);
 
+  v850_fpu_nan_result (&wop, 0, 1, 1,
+		       (const uint64_t []) { V850_GR64 (reg2e) });
   sim_fpu_to32 (&GR[reg3], &wop);
   TRACE_FP_RESULT_FPU1 (&wop);
 }
@@ -2608,10 +2863,10 @@ rrrr,011111100100 + wwwww,10001010000:F_I:::cvtf_dw
   sim_fpu wop;
   sim_fpu_status status;
 
-  sim_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
+  v850_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
-  status = sim_fpu_round_32 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_zero);
+  status = v850_fpu_round_32 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_zero);
   status |= sim_fpu_to32i (&ans, &wop, FPSR_GET_ROUND());
 
   check_cvt_fi (SD, status, 1);
@@ -2634,7 +2889,7 @@ rrrr,011111100001 + wwww,010001010010:F_I:::cvtf_ld
   TRACE_FP_INPUT_WORD2 (GR[reg2e], GR[reg2e+1]);
 
   sim_fpu_i64to (&wop, op, FPSR_GET_ROUND());
-  status = sim_fpu_round_64 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_zero);
+  status = v850_fpu_round_64 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_zero);
 
   check_cvt_if (SD, status, 1);
 
@@ -2656,7 +2911,7 @@ rrrr,011111100001 + wwwww,10001000010:F_I:::cvtf_ls
   TRACE_FP_INPUT_WORD2 (GR[reg2e], GR[reg2e+1]);
 
   sim_fpu_i64to (&wop, op, FPSR_GET_ROUND());
-  status = sim_fpu_round_32 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_zero);
+  status = v850_fpu_round_32 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_zero);
 
   check_cvt_if (SD, status, 0);
 
@@ -2673,12 +2928,13 @@ rrrrr,11111100010 + wwww,010001010010:F_I:::cvtf_sd
   sim_fpu wop;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop, GR[reg2]);
+  v850_fpu_32to (&wop, GR[reg2]);
   TRACE_FP_INPUT_FPU1 (&wop);
-  status = sim_fpu_round_64 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  status = v850_fpu_round_64 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   check_cvt_ff (SD, status, 1);
 
+  v850_fpu_nan_result (&wop, 1, 0, 1, (const uint64_t []) { GR[reg2] });
   sim_fpu_to232 (&GR[reg3e+1], &GR[reg3e], &wop);
   TRACE_FP_RESULT_FPU1 (&wop);
 }
@@ -2693,10 +2949,10 @@ rrrrr,11111100100 + wwww,010001000100:F_I:::cvtf_sl
   sim_fpu wop;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop, GR[reg2]);
+  v850_fpu_32to (&wop, GR[reg2]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
-  status = sim_fpu_round_64 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_zero);
+  status = v850_fpu_round_64 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_zero);
   status |= sim_fpu_to64i (&ans, &wop, FPSR_GET_ROUND());
 
   check_cvt_fi (SD, status, 0);
@@ -2716,10 +2972,10 @@ rrrrr,11111100100 + wwwww,10001000000:F_I:::cvtf_sw
   sim_fpu wop;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop, GR[reg2]);
+  v850_fpu_32to (&wop, GR[reg2]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
-  status = sim_fpu_round_32 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_zero);
+  status = v850_fpu_round_32 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_zero);
   status |= sim_fpu_to32i (&ans, &wop, sim_fpu_round_zero);
 
   check_cvt_fi (SD, status, 0);
@@ -2739,7 +2995,7 @@ rrrrr,11111100000 + wwww,010001010010:F_I:::cvtf_wd
 
   TRACE_FP_INPUT_WORD1 (GR[reg2]);
   sim_fpu_i32to (&wop, GR[reg2], FPSR_GET_ROUND());
-  status = sim_fpu_round_64 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_zero);
+  status = v850_fpu_round_64 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_zero);
 
   check_cvt_if (SD, status, 1);
 
@@ -2758,7 +3014,7 @@ rrrrr,11111100000 + wwwww,10001000010:F_I:::cvtf_ws
 
   TRACE_FP_INPUT_WORD1 (GR[reg2]);
   sim_fpu_i32to (&wop, GR[reg2], FPSR_GET_ROUND());
-  status = sim_fpu_round_32 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_zero);
+  status = v850_fpu_round_32 (&wop, FPSR_GET_ROUND(), sim_fpu_denorm_zero);
 
   check_cvt_if (SD, status, 0);
 
@@ -2775,15 +3031,18 @@ rrrr,0111111,RRRR,0 + wwww,010001111110:F_I:::divf_d
   sim_fpu ans, wop1, wop2;
   sim_fpu_status status;
 
-  sim_fpu_232to (&wop1, GR[reg1e+1], GR[reg1e]);
-  sim_fpu_232to (&wop2, GR[reg2e+1], GR[reg2e]);
+  v850_fpu_232to (&wop1, GR[reg1e+1], GR[reg1e]);
+  v850_fpu_232to (&wop2, GR[reg2e+1], GR[reg2e]);
   TRACE_FP_INPUT_FPU2 (&wop1, &wop2);
 
   status = sim_fpu_div (&ans, &wop2, &wop1);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  status |= v850_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEZ | FPSR_XEI | FPSR_XEO | FPSR_XEU, 1);
 
+  v850_fpu_nan_result (&ans, 1, 1, 2,
+		       (const uint64_t []) { V850_GR64 (reg2e),
+					     V850_GR64 (reg1e) });
   sim_fpu_to232 (&GR[reg3e+1], &GR[reg3e], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -2797,15 +3056,17 @@ rrrrr,111111,RRRRR + wwwww,10001101110:F_I:::divf_s
   sim_fpu ans, wop1, wop2;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop1, GR[reg1]);
-  sim_fpu_32to (&wop2, GR[reg2]);
+  v850_fpu_32to (&wop1, GR[reg1]);
+  v850_fpu_32to (&wop2, GR[reg2]);
   TRACE_FP_INPUT_FPU2 (&wop1, &wop2);
 
   status = sim_fpu_div (&ans, &wop2, &wop1);
-  status |= sim_fpu_round_32 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  status |= v850_fpu_round_32 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEZ | FPSR_XEI | FPSR_XEO | FPSR_XEU, 0);
 
+  v850_fpu_nan_result (&ans, 0, 0, 2,
+		       (const uint64_t []) { GR[reg2], GR[reg1] });
   sim_fpu_to32 (&GR[reg3], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -2818,18 +3079,21 @@ rrrrr,111111,RRRRR + wwwww,101,W,00,WWWW,0:F_I:::maddf_s
   sim_fpu ans, wop1, wop2, wop3;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop1, GR[reg1]);
-  sim_fpu_32to (&wop2, GR[reg2]);
-  sim_fpu_32to (&wop3, GR[reg3]);
+  v850_fpu_32to (&wop1, GR[reg1]);
+  v850_fpu_32to (&wop2, GR[reg2]);
+  v850_fpu_32to (&wop3, GR[reg3]);
   TRACE_FP_INPUT_FPU3 (&wop1, &wop2, &wop3);
 
   status = sim_fpu_mul (&ans, &wop1, &wop2);
   wop1 = ans;
   status |= sim_fpu_add (&ans, &wop1, &wop3);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  v850_fpu_sum_zero (&ans, &wop1, &wop3, 0, status, FPSR_GET_ROUND ());
+  status |= v850_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEI | FPSR_XEO | FPSR_XEU, 0);
 
+  v850_fpu_nan_result (&ans, 0, 0, 3,
+		       (const uint64_t []) { GR[reg2], GR[reg1], GR[reg3] });
   sim_fpu_to32 (&GR[reg4], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -2842,18 +3106,21 @@ rrrrr,111111,RRRRR + wwwww,10011100000:F_I:::fmaf_s
   sim_fpu ans, wop1, wop2, wop3;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop1, GR[reg1]);
-  sim_fpu_32to (&wop2, GR[reg2]);
-  sim_fpu_32to (&wop3, GR[reg3]);
+  v850_fpu_32to (&wop1, GR[reg1]);
+  v850_fpu_32to (&wop2, GR[reg2]);
+  v850_fpu_32to (&wop3, GR[reg3]);
   TRACE_FP_INPUT_FPU3 (&wop1, &wop2, &wop3);
 
   status = sim_fpu_mul (&ans, &wop1, &wop2);
   wop1 = ans;
   status |= sim_fpu_add (&ans, &wop1, &wop3);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  v850_fpu_sum_zero (&ans, &wop1, &wop3, 0, status, FPSR_GET_ROUND ());
+  status |= v850_fpu_round_32 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEI | FPSR_XEO | FPSR_XEU, 0);
 
+  v850_fpu_nan_result (&ans, 0, 0, 3,
+		       (const uint64_t []) { GR[reg2], GR[reg1], GR[reg3] });
   sim_fpu_to32 (&GR[reg3], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -2879,6 +3146,13 @@ rrrr,0111111,RRRR,0 + wwww,010001111000:F_I:::maxf_d
       else
 	{
 	  ans = sim_fpu_qnan;
+	  if (!sim_fpu_is_snan (&wop1) && !sim_fpu_is_snan (&wop2))
+	    {
+	      if (!sim_fpu_is_nan (&wop2))
+		ans = wop2;
+	      else if (!sim_fpu_is_nan (&wop1))
+		ans = wop1;
+	    }
 	}
     }
   else if (FPSR & FPSR_FS
@@ -2892,6 +3166,9 @@ rrrr,0111111,RRRR,0 + wwww,010001111000:F_I:::maxf_d
       sim_fpu_max (&ans, &wop1, &wop2);
     }
   
+  v850_fpu_nan_result (&ans, 1, 1, 2,
+		       (const uint64_t []) { V850_GR64 (reg2e),
+					     V850_GR64 (reg1e) });
   sim_fpu_to232 (&GR[reg3e+1], &GR[reg3e], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -2917,6 +3194,13 @@ rrrrr,111111,RRRRR + wwwww,10001101000:F_I:::maxf_s
       else
 	{
 	  ans = sim_fpu_qnan;
+	  if (!sim_fpu_is_snan (&wop1) && !sim_fpu_is_snan (&wop2))
+	    {
+	      if (!sim_fpu_is_nan (&wop2))
+		ans = wop2;
+	      else if (!sim_fpu_is_nan (&wop1))
+		ans = wop1;
+	    }
 	}
     }
   else if ((FPSR & FPSR_FS)
@@ -2930,6 +3214,8 @@ rrrrr,111111,RRRRR + wwwww,10001101000:F_I:::maxf_s
       sim_fpu_max (&ans, &wop1, &wop2);
     }
   
+  v850_fpu_nan_result (&ans, 0, 0, 2,
+		       (const uint64_t []) { GR[reg2], GR[reg1] });
   sim_fpu_to32 (&GR[reg3], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -2955,6 +3241,13 @@ rrrr,0111111,RRRR,0 + wwww,010001111010:F_I:::minf_d
       else
 	{
 	  ans = sim_fpu_qnan;
+	  if (!sim_fpu_is_snan (&wop1) && !sim_fpu_is_snan (&wop2))
+	    {
+	      if (!sim_fpu_is_nan (&wop2))
+		ans = wop2;
+	      else if (!sim_fpu_is_nan (&wop1))
+		ans = wop1;
+	    }
 	}
     }
   else if (FPSR & FPSR_FS
@@ -2968,6 +3261,9 @@ rrrr,0111111,RRRR,0 + wwww,010001111010:F_I:::minf_d
       sim_fpu_min (&ans, &wop1, &wop2);
     }
   
+  v850_fpu_nan_result (&ans, 1, 1, 2,
+		       (const uint64_t []) { V850_GR64 (reg2e),
+					     V850_GR64 (reg1e) });
   sim_fpu_to232 (&GR[reg3e+1], &GR[reg3e], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -2993,6 +3289,13 @@ rrrrr,111111,RRRRR + wwwww,10001101010:F_I:::minf_s
       else
 	{
 	  ans = sim_fpu_qnan;
+	  if (!sim_fpu_is_snan (&wop1) && !sim_fpu_is_snan (&wop2))
+	    {
+	      if (!sim_fpu_is_nan (&wop2))
+		ans = wop2;
+	      else if (!sim_fpu_is_nan (&wop1))
+		ans = wop1;
+	    }
 	}
     }
   else if (FPSR & FPSR_FS
@@ -3006,6 +3309,8 @@ rrrrr,111111,RRRRR + wwwww,10001101010:F_I:::minf_s
       sim_fpu_min (&ans, &wop1, &wop2);
     }
   
+  v850_fpu_nan_result (&ans, 0, 0, 2,
+		       (const uint64_t []) { GR[reg2], GR[reg1] });
   sim_fpu_to32 (&GR[reg3], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -3018,19 +3323,22 @@ rrrrr,111111,RRRRR + wwwww,101,W,01,WWWW,0:F_I:::msubf_s
   sim_fpu ans, wop1, wop2, wop3;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop1, GR[reg1]);
-  sim_fpu_32to (&wop2, GR[reg2]);
-  sim_fpu_32to (&wop3, GR[reg3]);
+  v850_fpu_32to (&wop1, GR[reg1]);
+  v850_fpu_32to (&wop2, GR[reg2]);
+  v850_fpu_32to (&wop3, GR[reg3]);
   TRACE_FP_INPUT_FPU3 (&wop1, &wop2, &wop3);
 
   status = sim_fpu_mul (&ans, &wop1, &wop2);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  status |= v850_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
   wop1 = ans;
   status |= sim_fpu_sub (&ans, &wop1, &wop3);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  v850_fpu_sum_zero (&ans, &wop1, &wop3, 1, status, FPSR_GET_ROUND ());
+  status |= v850_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEI | FPSR_XEO | FPSR_XEU, 0);
 
+  v850_fpu_nan_result (&ans, 0, 0, 3,
+		       (const uint64_t []) { GR[reg2], GR[reg1], GR[reg3] });
   sim_fpu_to32 (&GR[reg4], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -3043,19 +3351,21 @@ rrrrr,111111,RRRRR + wwwww,10011100010:F_I:::fmsf_s
   sim_fpu ans, wop1, wop2, wop3;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop1, GR[reg1]);
-  sim_fpu_32to (&wop2, GR[reg2]);
-  sim_fpu_32to (&wop3, GR[reg3]);
+  v850_fpu_32to (&wop1, GR[reg1]);
+  v850_fpu_32to (&wop2, GR[reg2]);
+  v850_fpu_32to (&wop3, GR[reg3]);
   TRACE_FP_INPUT_FPU3 (&wop1, &wop2, &wop3);
 
   status = sim_fpu_mul (&ans, &wop1, &wop2);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
   wop1 = ans;
   status |= sim_fpu_sub (&ans, &wop1, &wop3);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  v850_fpu_sum_zero (&ans, &wop1, &wop3, 1, status, FPSR_GET_ROUND ());
+  status |= v850_fpu_round_32 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEI | FPSR_XEO | FPSR_XEU, 0);
 
+  v850_fpu_nan_result (&ans, 0, 0, 3,
+		       (const uint64_t []) { GR[reg2], GR[reg1], GR[reg3] });
   sim_fpu_to32 (&GR[reg3], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -3069,15 +3379,18 @@ rrrr,0111111,RRRR,0 + wwww,010001110100:F_I:::mulf_d
   sim_fpu ans, wop1, wop2;
   sim_fpu_status status;
 
-  sim_fpu_232to (&wop1, GR[reg1e+1], GR[reg1e]);
-  sim_fpu_232to (&wop2, GR[reg2e+1], GR[reg2e]);
+  v850_fpu_232to (&wop1, GR[reg1e+1], GR[reg1e]);
+  v850_fpu_232to (&wop2, GR[reg2e+1], GR[reg2e]);
   TRACE_FP_INPUT_FPU2 (&wop1, &wop2);
 
   status = sim_fpu_mul (&ans, &wop1, &wop2);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  status |= v850_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEI | FPSR_XEO | FPSR_XEU, 1);
 
+  v850_fpu_nan_result (&ans, 1, 1, 2,
+		       (const uint64_t []) { V850_GR64 (reg2e),
+					     V850_GR64 (reg1e) });
   sim_fpu_to232 (&GR[reg3e+1], &GR[reg3e], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -3091,15 +3404,17 @@ rrrrr,111111,RRRRR + wwwww,10001100100:F_I:::mulf_s
   sim_fpu ans, wop1, wop2;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop1, GR[reg1]);
-  sim_fpu_32to (&wop2, GR[reg2]);
+  v850_fpu_32to (&wop1, GR[reg1]);
+  v850_fpu_32to (&wop2, GR[reg2]);
   TRACE_FP_INPUT_FPU2 (&wop1, &wop2);
 
   status = sim_fpu_mul (&ans, &wop1, &wop2);
-  status |= sim_fpu_round_32 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  status |= v850_fpu_round_32 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEI | FPSR_XEO | FPSR_XEU, 0);
 
+  v850_fpu_nan_result (&ans, 0, 0, 2,
+		       (const uint64_t []) { GR[reg2], GR[reg1] });
   sim_fpu_to32 (&GR[reg3], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -3111,16 +3426,20 @@ rrrr,011111100001 + wwww,010001011000:F_I:::negf_d
 "negf.d r<reg2e>, r<reg3e>"
 {
   sim_fpu ans, wop;
-  sim_fpu_status status;
 
   sim_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
-  status = sim_fpu_neg (&ans, &wop);
+  sim_fpu_neg (&ans, &wop);
 
-  check_invalid_snan (SD, status, 1);
 
-  sim_fpu_to232 (&GR[reg3e+1], &GR[reg3e], &ans);
+  if (sim_fpu_is_nan (&wop))
+    {
+      GR[reg3e+1] = GR[reg2e+1] ^ 0x80000000;
+      GR[reg3e] = GR[reg2e];
+    }
+  else
+    sim_fpu_to232 (&GR[reg3e+1], &GR[reg3e], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
 
@@ -3131,16 +3450,17 @@ rrrrr,11111100001 + wwwww,10001001000:F_I:::negf_s
 "negf.s r<reg2>, r<reg3>"
 {
   sim_fpu ans, wop;
-  sim_fpu_status status;
 
   sim_fpu_32to (&wop, GR[reg2]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
-  status = sim_fpu_neg (&ans, &wop);
+  sim_fpu_neg (&ans, &wop);
 
-  check_invalid_snan (SD, status, 0);
 
-  sim_fpu_to32 (&GR[reg3], &ans);
+  if (sim_fpu_is_nan (&wop))
+    GR[reg3] = GR[reg2] ^ 0x80000000;
+  else
+    sim_fpu_to32 (&GR[reg3], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
 
@@ -3152,20 +3472,23 @@ rrrrr,111111,RRRRR + wwwww,101,W,10,WWWW,0:F_I:::nmaddf_s
   sim_fpu ans, wop1, wop2, wop3;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop1, GR[reg1]);
-  sim_fpu_32to (&wop2, GR[reg2]);
-  sim_fpu_32to (&wop3, GR[reg3]);
+  v850_fpu_32to (&wop1, GR[reg1]);
+  v850_fpu_32to (&wop2, GR[reg2]);
+  v850_fpu_32to (&wop3, GR[reg3]);
   TRACE_FP_INPUT_FPU3 (&wop1, &wop2, &wop3);
 
   status = sim_fpu_mul (&ans, &wop1, &wop2);
   wop1 = ans;
   status |= sim_fpu_add (&ans, &wop1, &wop3);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  v850_fpu_sum_zero (&ans, &wop1, &wop3, 0, status, FPSR_GET_ROUND ());
+  status |= v850_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
   wop1 = ans;
   status |= sim_fpu_neg (&ans, &wop1);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEI | FPSR_XEO | FPSR_XEU, 0);
 
+  v850_fpu_nan_result (&ans, 0, 0, 3,
+		       (const uint64_t []) { GR[reg2], GR[reg1], GR[reg3] });
   sim_fpu_to32 (&GR[reg4], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -3178,20 +3501,23 @@ rrrrr,111111,RRRRR + wwwww,10011100100:F_I:::fnmaf_s
   sim_fpu ans, wop1, wop2, wop3;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop1, GR[reg1]);
-  sim_fpu_32to (&wop2, GR[reg2]);
-  sim_fpu_32to (&wop3, GR[reg3]);
+  v850_fpu_32to (&wop1, GR[reg1]);
+  v850_fpu_32to (&wop2, GR[reg2]);
+  v850_fpu_32to (&wop3, GR[reg3]);
   TRACE_FP_INPUT_FPU3 (&wop1, &wop2, &wop3);
 
   status = sim_fpu_mul (&ans, &wop1, &wop2);
   wop1 = ans;
   status |= sim_fpu_add (&ans, &wop1, &wop3);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  v850_fpu_sum_zero (&ans, &wop1, &wop3, 0, status, FPSR_GET_ROUND ());
+  status |= v850_fpu_round_32 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
   wop1 = ans;
   status |= sim_fpu_neg (&ans, &wop1);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEI | FPSR_XEO | FPSR_XEU, 0);
 
+  v850_fpu_nan_result (&ans, 0, 0, 3,
+		       (const uint64_t []) { GR[reg2], GR[reg1], GR[reg3] });
   sim_fpu_to32 (&GR[reg3], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -3204,21 +3530,24 @@ rrrrr,111111,RRRRR + wwwww,101,W,11,WWWW,0:F_I:::nmsubf_s
   sim_fpu ans, wop1, wop2, wop3;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop1, GR[reg1]);
-  sim_fpu_32to (&wop2, GR[reg2]);
-  sim_fpu_32to (&wop3, GR[reg3]);
+  v850_fpu_32to (&wop1, GR[reg1]);
+  v850_fpu_32to (&wop2, GR[reg2]);
+  v850_fpu_32to (&wop3, GR[reg3]);
   TRACE_FP_INPUT_FPU3 (&wop1, &wop2, &wop3);
 
   status = sim_fpu_mul (&ans, &wop1, &wop2);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  status |= v850_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
   wop1 = ans;
   status |= sim_fpu_sub (&ans, &wop1, &wop3);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  v850_fpu_sum_zero (&ans, &wop1, &wop3, 1, status, FPSR_GET_ROUND ());
+  status |= v850_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
   wop1 = ans;
   status |= sim_fpu_neg (&ans, &wop1);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEI | FPSR_XEO | FPSR_XEU, 0);
 
+  v850_fpu_nan_result (&ans, 0, 0, 3,
+		       (const uint64_t []) { GR[reg2], GR[reg1], GR[reg3] });
   sim_fpu_to32 (&GR[reg4], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -3231,21 +3560,23 @@ rrrrr,111111,RRRRR + wwwww,10011100110:F_I:::fnmsf_s
   sim_fpu ans, wop1, wop2, wop3;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop1, GR[reg1]);
-  sim_fpu_32to (&wop2, GR[reg2]);
-  sim_fpu_32to (&wop3, GR[reg3]);
+  v850_fpu_32to (&wop1, GR[reg1]);
+  v850_fpu_32to (&wop2, GR[reg2]);
+  v850_fpu_32to (&wop3, GR[reg3]);
   TRACE_FP_INPUT_FPU3 (&wop1, &wop2, &wop3);
 
   status = sim_fpu_mul (&ans, &wop1, &wop2);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
   wop1 = ans;
   status |= sim_fpu_sub (&ans, &wop1, &wop3);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  v850_fpu_sum_zero (&ans, &wop1, &wop3, 1, status, FPSR_GET_ROUND ());
+  status |= v850_fpu_round_32 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
   wop1 = ans;
   status |= sim_fpu_neg (&ans, &wop1);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEI | FPSR_XEO | FPSR_XEU, 0);
 
+  v850_fpu_nan_result (&ans, 0, 0, 3,
+		       (const uint64_t []) { GR[reg2], GR[reg1], GR[reg3] });
   sim_fpu_to32 (&GR[reg3], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -3259,14 +3590,16 @@ rrrr,011111100001 + wwww,010001011110:F_I:::recipf.d
   sim_fpu ans, wop;
   sim_fpu_status status;
 
-  sim_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
+  v850_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
   status = sim_fpu_div (&ans, &sim_fpu_one, &wop);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  status |= v850_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEZ | FPSR_XEI | FPSR_XEO | FPSR_XEU, 1);
 
+  v850_fpu_nan_result (&ans, 1, 1, 1,
+		       (const uint64_t []) { V850_GR64 (reg2e) });
   sim_fpu_to232 (&GR[reg3e+1], &GR[reg3e], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -3280,14 +3613,15 @@ rrrrr,11111100001 + wwwww,10001001110:F_I:::recipf.s
   sim_fpu ans, wop;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop, GR[reg2]);
+  v850_fpu_32to (&wop, GR[reg2]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
   status = sim_fpu_div (&ans, &sim_fpu_one, &wop);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  status |= v850_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEZ | FPSR_XEI | FPSR_XEO | FPSR_XEU, 0);
 
+  v850_fpu_nan_result (&ans, 0, 0, 1, (const uint64_t []) { GR[reg2] });
   sim_fpu_to32 (&GR[reg3], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -3301,17 +3635,19 @@ rrrr,011111100010 + wwww,010001011110:F_I:::rsqrtf.d
   sim_fpu ans, wop;
   sim_fpu_status status;
 
-  sim_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
+  v850_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
   status = sim_fpu_sqrt (&ans, &wop);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  status |= v850_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
   wop = ans;
   status = sim_fpu_div (&ans, &sim_fpu_one, &wop);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  status |= v850_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEZ | FPSR_XEI | FPSR_XEO | FPSR_XEU, 1);
 
+  v850_fpu_nan_result (&ans, 1, 1, 1,
+		       (const uint64_t []) { V850_GR64 (reg2e) });
   sim_fpu_to232 (&GR[reg3e+1], &GR[reg3e], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -3325,17 +3661,18 @@ rrrrr,11111100010 + wwwww,10001001110:F_I:::rsqrtf.s
   sim_fpu ans, wop;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop, GR[reg2]);
+  v850_fpu_32to (&wop, GR[reg2]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
   status = sim_fpu_sqrt (&ans, &wop);
-  status |= sim_fpu_round_32 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  status |= v850_fpu_round_32 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
   wop = ans;
   status = sim_fpu_div (&ans, &sim_fpu_one, &wop);
-  status |= sim_fpu_round_32 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  status |= v850_fpu_round_32 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEZ | FPSR_XEI | FPSR_XEO | FPSR_XEU, 0);
 
+  v850_fpu_nan_result (&ans, 0, 0, 1, (const uint64_t []) { GR[reg2] });
   sim_fpu_to32 (&GR[reg3], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -3349,14 +3686,16 @@ rrrr,011111100000 + wwww,010001011110:F_I:::sqrtf.d
   sim_fpu ans, wop;
   sim_fpu_status status;
 
-  sim_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
+  v850_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
   status = sim_fpu_sqrt (&ans, &wop);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  status |= v850_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEI, 1);
 
+  v850_fpu_nan_result (&ans, 1, 1, 1,
+		       (const uint64_t []) { V850_GR64 (reg2e) });
   sim_fpu_to232 (&GR[reg3e+1], &GR[reg3e], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -3370,14 +3709,15 @@ rrrrr,11111100000 + wwwww,10001001110:F_I:::sqrtf.s
   sim_fpu ans, wop;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop, GR[reg2]);
+  v850_fpu_32to (&wop, GR[reg2]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
   status = sim_fpu_sqrt (&ans, &wop);
-  status |= sim_fpu_round_32 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  status |= v850_fpu_round_32 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEI, 0);
 
+  v850_fpu_nan_result (&ans, 0, 0, 1, (const uint64_t []) { GR[reg2] });
   sim_fpu_to32 (&GR[reg3], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -3391,15 +3731,19 @@ rrrr,0111111,RRRR,0 + wwww,010001110010:F_I:::subf.d
   sim_fpu ans, wop1, wop2;
   sim_fpu_status status;
 
-  sim_fpu_232to (&wop1, GR[reg1e+1], GR[reg1e]);
-  sim_fpu_232to (&wop2, GR[reg2e+1], GR[reg2e]);
+  v850_fpu_232to (&wop1, GR[reg1e+1], GR[reg1e]);
+  v850_fpu_232to (&wop2, GR[reg2e+1], GR[reg2e]);
   TRACE_FP_INPUT_FPU2 (&wop1, &wop2);
 
   status = sim_fpu_sub (&ans, &wop2, &wop1);
-  status |= sim_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  v850_fpu_sum_zero (&ans, &wop2, &wop1, 1, status, FPSR_GET_ROUND ());
+  status |= v850_fpu_round_64 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEI | FPSR_XEO | FPSR_XEU, 1);
 
+  v850_fpu_nan_result (&ans, 1, 1, 2,
+		       (const uint64_t []) { V850_GR64 (reg2e),
+					     V850_GR64 (reg1e) });
   sim_fpu_to232 (&GR[reg3e+1], &GR[reg3e], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -3413,15 +3757,18 @@ rrrrr,111111,RRRRR + wwwww,10001100010:F_I:::subf.s
   sim_fpu ans, wop1, wop2;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop1, GR[reg1]);
-  sim_fpu_32to (&wop2, GR[reg2]);
+  v850_fpu_32to (&wop1, GR[reg1]);
+  v850_fpu_32to (&wop2, GR[reg2]);
   TRACE_FP_INPUT_FPU2 (&wop1, &wop2);
 
   status = sim_fpu_sub (&ans, &wop2, &wop1);
-  status |= sim_fpu_round_32 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
+  v850_fpu_sum_zero (&ans, &wop2, &wop1, 1, status, FPSR_GET_ROUND ());
+  status |= v850_fpu_round_32 (&ans, FPSR_GET_ROUND(), sim_fpu_denorm_underflow_inexact);
 
   update_fpsr (SD, status, FPSR_XEV | FPSR_XEI | FPSR_XEO | FPSR_XEU, 0);
 
+  v850_fpu_nan_result (&ans, 0, 0, 2,
+		       (const uint64_t []) { GR[reg2], GR[reg1] });
   sim_fpu_to32 (&GR[reg3], &ans);
   TRACE_FP_RESULT_FPU1 (&ans);
 }
@@ -3453,7 +3800,7 @@ rrrr,011111100001 + wwww,010001010100:F_I:::trncf_dl
   sim_fpu wop;
   sim_fpu_status status;
 
-  sim_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
+  v850_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
   status = sim_fpu_to64i (&ans, &wop, sim_fpu_round_zero);
@@ -3475,7 +3822,7 @@ rrrr,011111110001 + wwww,010001010100:F_I:::trncf_dul
   sim_fpu wop;
   sim_fpu_status status;
 
-  sim_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
+  v850_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
   status = sim_fpu_to64u (&ans, &wop, sim_fpu_round_zero);
@@ -3497,7 +3844,7 @@ rrrr,011111100001 + wwwww,10001010000:F_I:::trncf_dw
   sim_fpu wop;
   sim_fpu_status status;
 
-  sim_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
+  v850_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
   status = sim_fpu_to32i (&ans, &wop, sim_fpu_round_zero);
@@ -3518,7 +3865,7 @@ rrrr,011111110001 + wwwww,10001010000:F_I:::trncf_duw
   sim_fpu wop;
   sim_fpu_status status;
 
-  sim_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
+  v850_fpu_232to (&wop, GR[reg2e+1], GR[reg2e]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
   status = sim_fpu_to32u (&ans, &wop, sim_fpu_round_zero);
@@ -3538,7 +3885,7 @@ rrrrr,11111100001 + wwww,010001000100:F_I:::trncf_sl
   int64_t ans;
   sim_fpu wop;
 
-  sim_fpu_32to (&wop, GR[reg2]);
+  v850_fpu_32to (&wop, GR[reg2]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
   sim_fpu_to64i (&ans, &wop, sim_fpu_round_zero);
@@ -3557,7 +3904,7 @@ rrrrr,11111110001 + wwww,010001000100:F_I:::trncf_sul
   uint64_t ans;
   sim_fpu wop;
 
-  sim_fpu_32to (&wop, GR[reg2]);
+  v850_fpu_32to (&wop, GR[reg2]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
   sim_fpu_to64u (&ans, &wop, sim_fpu_round_zero);
@@ -3577,7 +3924,7 @@ rrrrr,11111100001 + wwwww,10001000000:F_I:::trncf_sw
   sim_fpu wop;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop, GR[reg2]);
+  v850_fpu_32to (&wop, GR[reg2]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
   status = sim_fpu_to32i (&ans, &wop, sim_fpu_round_zero);
@@ -3598,7 +3945,7 @@ rrrrr,11111110001 + wwwww,10001000000:F_I:::trncf_suw
   sim_fpu wop;
   sim_fpu_status status;
 
-  sim_fpu_32to (&wop, GR[reg2]);
+  v850_fpu_32to (&wop, GR[reg2]);
   TRACE_FP_INPUT_FPU1 (&wop);
 
   status = sim_fpu_to32u (&ans, &wop, sim_fpu_round_zero);

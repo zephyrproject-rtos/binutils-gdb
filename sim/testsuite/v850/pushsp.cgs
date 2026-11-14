@@ -1,0 +1,51 @@
+# v850 pushsp, popsp
+# mach: v850e3v5
+
+	.include "testutils.inc"
+
+	mov	sp, r5
+	mov	20, r20
+	mov	21, r21
+	mov	22, r22
+	pushsp	r20-r22
+	mov	r5, r6
+	add	-12, r6
+	cmp	r6, sp
+	bne	_fail
+	ld.w	8[sp], r7
+	reg	r7, 20
+	ld.w	4[sp], r7
+	reg	r7, 21
+	ld.w	0[sp], r7
+	reg	r7, 22
+
+	mov	0, r20
+	mov	0, r21
+	mov	0, r22
+	popsp	r20-r22
+	cmp	r5, sp
+	bne	_fail
+	reg	r20, 20
+	reg	r21, 21
+	reg	r22, 22
+
+# sp in the list is not loaded
+	mov	0, r2
+	pushsp	r2-r4
+	mov	r5, r6
+	add	-12, r6
+	cmp	r6, sp
+	bne	_fail
+	popsp	r2-r4
+	cmp	r5, sp
+	bne	_fail
+
+# rh > rt does nothing
+	pushsp	r22-r20
+	cmp	r5, sp
+	bne	_fail
+	popsp	r22-r20
+	cmp	r5, sp
+	bne	_fail
+
+	pass

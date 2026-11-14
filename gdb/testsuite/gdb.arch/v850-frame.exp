@@ -1,0 +1,51 @@
+# Copyright 2026 Free Software Foundation, Inc.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Test the v850 prologue unwinder on functions without a frame
+# pointer and without CFI.
+
+require {istarget "v850*-*-*"}
+
+standard_testfile .c .S
+
+if {[prepare_for_testing "failed to prepare" $testfile \
+	 [list $srcfile $srcfile2] debug]} {
+    return
+}
+
+if {![runto_main]} {
+    return
+}
+
+gdb_breakpoint "inner"
+gdb_continue_to_breakpoint "inner"
+
+# OUTER cleared r29, which it does not use as a frame pointer.  The
+# backtrace must still reach main.
+gdb_test "bt" \
+    [multi_line \
+	 "#0\[ \t\]*$hex in inner \\\(\\\)" \
+	 "#1\[ \t\]*$hex in outer \\\(\\\)" \
+	 "#2\[ \t\]*$hex in main \\\(\\\) at .*$srcfile:${decimal}"] \
+    "backtrace with r29 zero"
+
+# Computing the frame id with a non-zero r29 must not fail.
+gdb_test_no_output "set var \$r29 = 0x1000"
+gdb_test "bt" \
+    [multi_line \
+	 "#0\[ \t\]*$hex in inner \\\(\\\)" \
+	 "#1\[ \t\]*$hex in outer \\\(\\\)" \
+	 "#2\[ \t\]*$hex in main \\\(\\\) at .*$srcfile:${decimal}"] \
+    "backtrace with r29 set"

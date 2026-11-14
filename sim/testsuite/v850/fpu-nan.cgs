@@ -1,0 +1,41 @@
+# v850 FPU NaN results, default NaN and QNaN priority reg2, reg1, reg3
+# mach: v850e3v5
+
+	.include "testutils.inc"
+
+	.macro	op2 insn r_1 r_2 want
+	seti	\r_1, r1
+	seti	\r_2, r2
+	\insn	r1, r2, r3
+	reg	r3, \want
+	.endm
+
+	seti	0x00020000, r20
+	ldsr	r20, 6, 0
+# invalid operation on numbers
+	op2	divf.s, 0x00000000, 0x00000000, 0x7fffffff
+	op2	mulf.s, 0x00000000, 0x7f800000, 0x7fffffff
+# SNaN
+	op2	addf.s, 0x3f800000, 0x7f812345, 0x7fffffff
+	op2	addf.s, 0x7fc12345, 0x7f812345, 0x7fffffff
+# QNaN, reg2 first, then reg1
+	op2	addf.s, 0xffc54321, 0x7fc12345, 0x7fc12345
+	op2	addf.s, 0x7fc12345, 0xffc54321, 0xffc54321
+	op2	subf.s, 0x3f800000, 0x7fc12345, 0x7fc12345
+# MAXF and MINF with one QNaN give the number
+	op2	maxf.s, 0x7fc12345, 0x40000000, 0x40000000
+	op2	minf.s, 0x40000000, 0xffc54321, 0x40000000
+# FMAF takes the reg3 QNaN last
+	seti	0x3f800000, r1
+	seti	0x3f800000, r2
+	seti	0xffc54321, r3
+	fmaf.s	r1, r2, r3
+	reg	r3, 0xffc54321
+# double default NaN
+	seti	0, r6
+	seti	0, r7
+	divf.d	r6, r6, r8
+	reg	r8, 0xffffffff
+	reg	r9, 0x7fffffff
+
+	pass

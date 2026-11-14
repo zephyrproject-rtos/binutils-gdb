@@ -1,0 +1,95 @@
+# v850 clip.b, clip.bu, clip.h, clip.hu
+# mach: v850e3v5
+
+	.include "testutils.inc"
+
+	.macro	clip op r1 r2
+	.hword	(\r2 << 11) | 0x07e0 | \r1, \op
+	.endm
+
+# clip.b
+	noflags
+	seti	0x12345678, r1
+	clip	0x0008, 1, 2
+	flags	sat + nc + v + ns + nz
+	reg	r2, 0x7f
+
+	noflags
+	seti	0x80000000, r1
+	clip	0x0008, 1, 2
+	flags	sat + nc + v + s + nz
+	reg	r2, 0xffffff80
+
+	noflags
+	seti	0xfffffffd, r1
+	clip	0x0008, 1, 2
+	flags	nsat + nc + nv + s + nz
+	reg	r2, 0xfffffffd
+
+	noflags
+	mov	0, r1
+	clip	0x0008, 1, 2
+	flags	nsat + nc + nv + ns + z
+	reg	r2, 0
+
+# CY is cleared and SAT is not cleared
+	stsr	psw, r10
+	ori	0x18, r10, r10
+	ldsr	r10, psw
+	mov	5, r1
+	clip	0x0008, 1, 2
+	flags	sat + nc + nv + ns + nz
+	reg	r2, 5
+
+# clip.bu
+	noflags
+	seti	0x80000000, r1
+	clip	0x000a, 1, 2
+	flags	sat + nc + v + ns + nz
+	reg	r2, 0xff
+
+	noflags
+	seti	0x80, r1
+	clip	0x000a, 1, 2
+	flags	nsat + nc + nv + ns + nz
+	reg	r2, 0x80
+
+	noflags
+	mov	0, r1
+	clip	0x000a, 1, 2
+	flags	nsat + nc + nv + ns + z
+	reg	r2, 0
+
+# clip.h
+	noflags
+	seti	0xffff7fff, r1
+	clip	0x000c, 1, 2
+	flags	sat + nc + v + s + nz
+	reg	r2, 0xffff8000
+
+	noflags
+	seti	0x8000, r1
+	clip	0x000c, 1, 2
+	flags	sat + nc + v + ns + nz
+	reg	r2, 0x7fff
+
+	noflags
+	seti	0xffff8000, r1
+	clip	0x000c, 1, 2
+	flags	nsat + nc + nv + s + nz
+	reg	r2, 0xffff8000
+
+# clip.hu
+	noflags
+	seti	0xffffffff, r1
+	clip	0x000e, 1, 2
+	flags	sat + nc + v + ns + nz
+	reg	r2, 0xffff
+
+	noflags
+	seti	0x8000, r1
+	clip	0x000e, 1, 2
+	flags	nsat + nc + nv + ns + nz
+	reg	r2, 0x8000
+
+	pass

@@ -36,6 +36,9 @@ struct v850_sim_cpu {
   v850_regs reg;
   reg_t psw_mask;               /* only allow non-reserved bits to be set */
   sim_event *pending_nmi;
+  int link_valid;
+  int link_size;
+  reg_t link_addr;
 };
 
 #define V850_SIM_CPU(cpu) ((struct v850_sim_cpu *) CPU_ARCH_DATA (cpu))
@@ -150,11 +153,14 @@ nia = PC
 #define FPCC  (FPU_SR[9])
 #define FPCFG (FPU_SR[10])
 #define FPCFG_REGNO 10
+#define FPEC_REGNO 11
 
 #define FPSR_DEM  0x00200000
 #define FPSR_SEM  0x00100000
 #define FPSR_RM   0x000c0000
 #define FPSR_RN   0x00000000
+#define FPSR_FN   0x00800000
+#define FPSR_IF   0x00400000
 #define FPSR_FS   0x00020000
 #define FPSR_PR   0x00010000
 
@@ -215,6 +221,10 @@ nia = PC
 
 #define FPSR_GET_ROUND()					\
   (((FPSR & FPSR_RM) == FPSR_RN) ? sim_fpu_round_near		\
+   : (idecode_issue == idecode_v850e3v5_issue)			\
+   ? (((FPSR & FPSR_RM) == 0x00040000) ? sim_fpu_round_zero	\
+      : ((FPSR & FPSR_RM) == 0x00080000) ? sim_fpu_round_up	\
+      : sim_fpu_round_down)					\
    : ((FPSR & FPSR_RM) == 0x00040000) ? sim_fpu_round_up	\
    : ((FPSR & FPSR_RM) == 0x00080000) ? sim_fpu_round_down	\
    : sim_fpu_round_zero)
@@ -386,9 +396,12 @@ sim_core_read_aligned_2 (STATE_CPU (SD, 0), \
 sim_core_read_unaligned_##LEN (STATE_CPU (simulator, 0), \
 			       PC, read_map, (ADDR))
 
+void v850_link_store (uint32_t addr, int len);
+
 #define store_mem(ADDR,LEN,DATA) \
-sim_core_write_unaligned_##LEN (STATE_CPU (simulator, 0), \
-				PC, write_map, (ADDR), (DATA))
+(v850_link_store ((ADDR), (LEN)), \
+ sim_core_write_unaligned_##LEN (STATE_CPU (simulator, 0), \
+				 PC, write_map, (ADDR), (DATA)))
 
 
 /* compare cccc field against PSW */

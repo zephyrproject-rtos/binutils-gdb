@@ -1,0 +1,21 @@
+# v850 fused multiply-add rounds the exact result once, to single
+# precision, (1 + 2^-12)^2 + 2^-56 is just above a tie and rounds up,
+# rounding through double first would give the even value.
+# mach: v850e3v5
+
+	.include "testutils.inc"
+
+	seti	0x00020000, r20
+	ldsr	r20, 6, 0
+
+	seti	0x3f800800, r1
+	seti	0x3f800800, r2
+	seti	0x23800000, r3
+	fmaf.s	r1, r2, r3
+	reg	r3, 0x3f801001
+
+	seti	0xa3800000, r3
+	fmsf.s	r1, r2, r3
+	reg	r3, 0x3f801001
+
+	pass
